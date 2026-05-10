@@ -1,0 +1,17 @@
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyARqITBypOyeTeKsXhPCEggUyqNrCCN--s",
+  authDomain: "gestione-spese-verrazzano10.firebaseapp.com",
+  projectId: "gestione-spese-verrazzano10",
+  storageBucket: "gestione-spese-verrazzano10.firebasestorage.app",
+  messagingSenderId: "856995036307",
+  appId: "1:856995036307:web:1dab8d551e29cef51e6166"
+};
+
+const app = initializeApp(firebaseConfig);
+
+export const db = getFirestore(app);
+export const auth = getAuth(app);
