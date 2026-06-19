@@ -216,13 +216,24 @@ export default function Home() {
     <main style={{ padding: 20 }}>
       <h1>🏠 Casa App PRO</h1>
 	  
-	<div
+<div
   style={{
     position: "absolute",
     top: 20,
     right: 20
   }}
 >
+  <a
+    href="/categories"
+    style={{
+      color: "cyan",
+      display: "block",
+      marginBottom: 10
+    }}
+  >
+    📊 Spese per categoria
+  </a>
+
   <a
     href="/history"
     style={{
@@ -231,21 +242,8 @@ export default function Home() {
       fontWeight: "bold"
     }}
   >
-  
-   📊 Storico mesi
+    📊 Storico mesi
   </a>
-  
-  <a
-  href="/categories"
-  style={{
-    color: "cyan",
-    display: "block",
-    marginTop: 10
-  }}
->
-  📊 Spese per categoria
-</a>
-   
 </div>
       <p>{userNames[user.email] || user.email}</p>
       <button onClick={logout}>Logout</button>
@@ -275,21 +273,7 @@ export default function Home() {
 
       <hr />
 
-      {/* INPUT */}
-      <select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-        <option value="luce">luce</option>
-        <option value="gas">gas</option>
-        <option value="acqua">acqua</option>
-        <option value="telefono">telefono</option>
-        <option value="internet">internet</option>
-        <option value="spesa">spesa</option>
-        <option value="altro">altro</option>
-      </select>
-
-      <input value={importo} onChange={(e) => setImporto(e.target.value)} />
-      <button onClick={aggiungiSpesa}>Aggiungi</button>
-
-      <hr />
+     
 
       {/* CALENDARIO A GRIGLIA */}
       <h3>📅 Calendario mensile</h3>
@@ -336,6 +320,65 @@ export default function Home() {
       </div>
 
       <hr />
+	  
+{/* INPUT */}
+<div style={{ margin: "20px 0" }}>
+  
+  <select
+    value={categoria}
+    onChange={(e) => setCategoria(e.target.value)}
+    style={{
+      display: "block",
+      marginBottom: "12px",
+      padding: "8px",
+      backgroundColor: "#1f2937",
+      color: "white",
+      border: "1px solid #444",
+      borderRadius: "6px"
+    }}
+  >
+    <option value="luce">luce</option>
+    <option value="gas">gas</option>
+    <option value="acqua">acqua</option>
+    <option value="telefono">telefono</option>
+    <option value="internet">internet</option>
+    <option value="spesa">spesa</option>
+    <option value="altro">altro</option>
+  </select>
+
+  <input
+    value={importo}
+    onChange={(e) => setImporto(e.target.value)}
+    placeholder="Importo"
+    style={{
+      display: "block",
+      marginBottom: "12px",
+      padding: "8px",
+      backgroundColor: "#374151",  // più visibile su nero
+      color: "white",
+      border: "1px solid #555",
+      borderRadius: "6px"
+    }}
+  />
+
+  <button
+    onClick={aggiungiSpesa}
+    style={{
+      padding: "8px 12px",
+      borderRadius: "6px",
+      backgroundColor: "#06b6d4",
+      color: "black",
+      fontWeight: "bold",
+      border: "none",
+      cursor: "pointer"
+    }}
+  >
+    Aggiungi
+  </button>
+
+</div>
+
+<hr />
 
       {/* LISTA */}
 <h3>📋 Lista spese</h3>
@@ -410,7 +453,7 @@ export default function Home() {
       <hr />
 
      {/* LISTA SPESA */}
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+<div style={{ textAlign: "center" }}>
   <h3>🛒 Lista spesa</h3>
 
   <button
@@ -419,12 +462,13 @@ export default function Home() {
       background: "transparent",
       border: "none",
       color: "red",
-      fontSize: "22px",
+      fontSize: "15px",
       fontWeight: "bold",
-      cursor: "pointer"
+      cursor: "pointer",
+      marginTop: "5px"
     }}
   >
-    ✖
+    ✖ Svuota lista
   </button>
 </div>
 

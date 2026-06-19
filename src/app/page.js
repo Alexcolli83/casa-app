@@ -273,21 +273,7 @@ export default function Home() {
 
       <hr />
 
-      {/* INPUT */}
-      <select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-        <option value="luce">luce</option>
-        <option value="gas">gas</option>
-        <option value="acqua">acqua</option>
-        <option value="telefono">telefono</option>
-        <option value="internet">internet</option>
-        <option value="spesa">spesa</option>
-        <option value="altro">altro</option>
-      </select>
-
-      <input value={importo} onChange={(e) => setImporto(e.target.value)} />
-      <button onClick={aggiungiSpesa}>Aggiungi</button>
-
-      <hr />
+     
 
       {/* CALENDARIO A GRIGLIA */}
       <h3>📅 Calendario mensile</h3>
@@ -334,6 +320,63 @@ export default function Home() {
       </div>
 
       <hr />
+	  
+{/* INPUT */}
+<div style={{ margin: "20px 0", display: "flex", gap: "10px", alignItems: "center" }}>
+
+  <select
+    value={categoria}
+    onChange={(e) => setCategoria(e.target.value)}
+    style={{
+      padding: "8px",
+      backgroundColor: "#1f2937",
+      color: "white",
+      border: "1px solid #444",
+      borderRadius: "6px"
+    }}
+  >
+    <option value="luce">luce</option>
+    <option value="gas">gas</option>
+    <option value="acqua">acqua</option>
+    <option value="telefono">telefono</option>
+    <option value="internet">internet</option>
+    <option value="spesa">spesa</option>
+    <option value="altro">altro</option>
+  </select>
+
+  <input
+    value={importo}
+    onChange={(e) => setImporto(e.target.value)}
+    placeholder="Importo"
+    type="number"
+    style={{
+      flex: 1,
+      padding: "8px",
+      backgroundColor: "#374151",
+      color: "white",
+      border: "1px solid #555",
+      borderRadius: "6px",
+      minWidth: "90px"
+    }}
+  />
+
+  <button
+    onClick={aggiungiSpesa}
+    style={{
+      padding: "8px 12px",
+      borderRadius: "6px",
+      backgroundColor: "#06b6d4",
+      color: "black",
+      fontWeight: "bold",
+      border: "none",
+      cursor: "pointer",
+      whiteSpace: "nowrap"
+    }}
+  >
+    Aggiungi
+  </button>
+
+</div>
 
       {/* LISTA */}
 <h3>📋 Lista spese</h3>
@@ -408,7 +451,7 @@ export default function Home() {
       <hr />
 
      {/* LISTA SPESA */}
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+<div style={{ textAlign: "center" }}>
   <h3>🛒 Lista spesa</h3>
 
   <button
@@ -417,12 +460,13 @@ export default function Home() {
       background: "transparent",
       border: "none",
       color: "red",
-      fontSize: "22px",
+      fontSize: "15px",
       fontWeight: "bold",
-      cursor: "pointer"
+      cursor: "pointer",
+      marginTop: "5px"
     }}
   >
-    ✖
+    ✖ Svuota lista
   </button>
 </div>
 
