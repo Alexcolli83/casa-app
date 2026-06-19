@@ -5,54 +5,108 @@ import { db } from "@/firebase";
 import { collection, onSnapshot } from "firebase/firestore";
 
 export default function History() {
-  const [spese, setSpese] = useState([]);
+const [spese, setSpese] = useState([]);
 
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "speseCasa"), (snap) => {
-      setSpese(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+useEffect(() => {
+const unsub = onSnapshot(collection(db, "speseCasa"), (snap) => {
+setSpese(
+snap.docs.map((d) => ({
+id: d.id,
+...d.data(),
+}))
+);
+});
 
-    return () => unsub();
-  }, []);
+```
+return () => unsub();
+```
 
-  // 🔥 raggruppa per mese
-  const mesi = {};
+}, []);
 
-  spese.forEach((s) => {
-    if (!s.data) return;
+// RAGGRUPPAMENTO PER MESE + CATEGORIE
+const mesi = {};
 
-    const d = new Date(s.data.seconds * 1000);
+spese.forEach((s) => {
+if (!s.data) return;
 
-    const key =
-      d.getFullYear() +
-      "-" +
-      String(d.getMonth() + 1).padStart(2, "0");
+```
+const d = new Date(s.data.seconds * 1000);
 
-    const val = Number(s.importo);
-    if (isNaN(val)) return;
+const key =
+  d.getFullYear() +
+  "-" +
+  String(d.getMonth() + 1).padStart(2, "0");
 
-    if (!mesi[key]) mesi[key] = 0;
+const val = Number(s.importo);
+if (isNaN(val)) return;
 
-    mesi[key] += val;
-  });
+if (!mesi[key]) {
+  mesi[key] = {
+    totale: 0,
+    categorie: {},
+  };
+}
 
-  return (
-    <main style={{ padding: 20 }}>
-      <h1>📊 Storico Mesi</h1>
+mesi[key].totale += val;
 
-      {Object.entries(mesi)
-        .sort(([a], [b]) => b.localeCompare(a))
-        .map(([mese, totale]) => (
-          <div
-            key={mese}
-            style={{
-              padding: 10,
-              borderBottom: "1px solid #333"
-            }}
-          >
-            <strong>{mese}</strong> → €{totale}
-          </div>
-        ))}
-    </main>
-  );
+if (!mesi[key].categorie[s.categoria]) {
+  mesi[key].categorie[s.categoria] = 0;
+}
+
+mesi[key].categorie[s.categoria] += val;
+```
+
+});
+
+return (
+<main style={{ padding: 20 }}>
+{/* TORNA ALLA HOME */}
+<div style={{ marginBottom: 20 }}>
+<a
+href="/"
+style={{
+color: "cyan",
+textDecoration: "none",
+fontWeight: "bold",
+}}
+>
+← Torna alla Home </a> </div>
+
+```
+  <h1>📊 Storico Mesi</h1>
+
+  {Object.entries(mesi)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([mese, dati]) => (
+      <div
+        key={mese}
+        style={{
+          padding: 12,
+          borderBottom: "1px solid #333",
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: "bold",
+            marginBottom: 6,
+          }}
+        >
+          {mese} → €{dati.totale.toFixed(2)}
+        </div>
+
+        <div style={{ paddingLeft: 12 }}>
+          {Object.entries(dati.categorie).map(([cat, val]) => (
+            <div key={cat}>
+              {cat}: €{val.toFixed(2)}
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+</main>
+```
+
+);
 }

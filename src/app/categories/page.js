@@ -22,13 +22,21 @@ import {
 export default function Categories() {
   const [spese, setSpese] = useState([]);
 
-  // FILTRI
   const [mode, setMode] = useState("3m");
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   const [categoriaFiltro, setCategoriaFiltro] = useState("all");
 
-  // FIRESTORE
+  const colors = [
+    "#60a5fa",
+    "#34d399",
+    "#fbbf24",
+    "#f87171",
+    "#a78bfa",
+    "#fb7185",
+    "#22d3ee",
+  ];
+
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "speseCasa"), (snap) => {
       setSpese(
@@ -42,38 +50,48 @@ export default function Categories() {
     return () => unsub();
   }, []);
 
-  // COLORI BARRE
-  const colors = [
-    "#60a5fa",
-    "#34d399",
-    "#fbbf24",
-    "#f87171",
-    "#a78bfa",
-    "#fb7185",
-    "#22d3ee",
-  ];
-
-  // 📊 CATEGORIE
-  const datiCategorie = useMemo(() => {
+  // =========================
+  // FUNZIONE UNICA FILTRO DATA
+  // =========================
+  const getStartDate = () => {
     const now = new Date();
-    const meseCorrente =
-      now.getFullYear() +
-      "-" +
-      String(now.getMonth() + 1).padStart(2, "0");
 
+    if (mode === "1m") {
+      const d = new Date();
+      d.setMonth(now.getMonth() - 1);
+      return d;
+    }
+
+    if (mode === "3m") {
+      const d = new Date();
+      d.setMonth(now.getMonth() - 3);
+      return d;
+    }
+
+    if (mode === "6m") {
+      const d = new Date();
+      d.setMonth(now.getMonth() - 6);
+      return d;
+    }
+
+    return null; // all o custom
+  };
+
+  // =========================
+  // CATEGORIE
+  // =========================
+  const datiCategorie = useMemo(() => {
     const map = {};
+
+    const start = mode === "custom" ? startDate : getStartDate();
 
     spese.forEach((s) => {
       if (!s.data) return;
 
       const d = new Date(s.data.seconds * 1000);
 
-      const mese =
-        d.getFullYear() +
-        "-" +
-        String(d.getMonth() + 1).padStart(2, "0");
-
-      if (mese !== meseCorrente) return;
+      if (start && d < start) return;
+      if (mode === "custom" && endDate && d > endDate) return;
 
       if (categoriaFiltro !== "all" && s.categoria !== categoriaFiltro)
         return;
@@ -91,25 +109,16 @@ export default function Categories() {
       map[s.categoria].totale += val;
     });
 
-    return Object.values(map);
-  }, [spese, categoriaFiltro]);
+    return Object.values(map).sort((a, b) => b.totale - a.totale);
+  }, [spese, mode, startDate, endDate, categoriaFiltro]);
 
-  // 📈 TREND
+  // =========================
+  // TREND
+  // =========================
   const datiTrend = useMemo(() => {
     const map = {};
-    const now = new Date();
-    let start = null;
 
-    if (mode === "1m") {
-      start = new Date();
-      start.setMonth(now.getMonth() - 1);
-    } else if (mode === "3m") {
-      start = new Date();
-      start.setMonth(now.getMonth() - 3);
-    } else if (mode === "6m") {
-      start = new Date();
-      start.setMonth(now.getMonth() - 6);
-    }
+    const start = mode === "custom" ? startDate : getStartDate();
 
     spese.forEach((s) => {
       if (!s.data) return;
@@ -117,8 +126,7 @@ export default function Categories() {
       const d = new Date(s.data.seconds * 1000);
 
       if (start && d < start) return;
-      if (startDate && d < startDate) return;
-      if (endDate && d > endDate) return;
+      if (mode === "custom" && endDate && d > endDate) return;
 
       if (categoriaFiltro !== "all" && s.categoria !== categoriaFiltro)
         return;
@@ -145,13 +153,11 @@ export default function Categories() {
 
   return (
     <main style={{ padding: 20, background: "#0f0f0f", color: "white" }}>
-      {/* HOME */}
-      <a href="/" style={{ color: "cyan", display: "block", marginBottom: 10 }}>
+      <a href="/" style={{ color: "cyan", marginBottom: 10, display: "block" }}>
         ← Home
       </a>
 
-      {/* MODE */}
-      <h3>📊 Periodo rapido</h3>
+      <h3>📊 Periodo</h3>
 
       <select value={mode} onChange={(e) => setMode(e.target.value)}>
         <option value="1m">Ultimo mese</option>
@@ -162,18 +168,13 @@ export default function Categories() {
       </select>
 
       {mode === "custom" && (
-        <>
-          <h4>📅 Range personalizzato</h4>
-
-          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-            <DatePicker selected={startDate} onChange={setStartDate} />
-            <DatePicker selected={endDate} onChange={setEndDate} />
-          </div>
-        </>
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <DatePicker selected={startDate} onChange={setStartDate} />
+          <DatePicker selected={endDate} onChange={setEndDate} />
+        </div>
       )}
 
-      {/* CATEGORIA */}
-      <h3>🧾 Filtro categoria</h3>
+      <h3>🧾 Categoria</h3>
 
       <select
         value={categoriaFiltro}
@@ -189,7 +190,6 @@ export default function Categories() {
         <option value="altro">altro</option>
       </select>
 
-      {/* BAR CHART */}
       <h2>📊 Spese per categoria</h2>
 
       <div style={{ width: "100%", height: 300 }}>
@@ -200,19 +200,15 @@ export default function Categories() {
             <Tooltip />
 
             <Bar dataKey="totale">
-              {datiCategorie.map((_, index) => (
-                <Cell
-                  key={index}
-                  fill={colors[index % colors.length]}
-                />
+              {datiCategorie.map((_, i) => (
+                <Cell key={i} fill={colors[i % colors.length]} />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      {/* TREND */}
-      <h2 style={{ marginTop: 40 }}>📈 Trend spese</h2>
+      <h2 style={{ marginTop: 40 }}>📈 Trend mensile</h2>
 
       <div style={{ width: "100%", height: 300 }}>
         <ResponsiveContainer>
@@ -220,13 +216,7 @@ export default function Categories() {
             <XAxis dataKey="mese" stroke="#fff" />
             <YAxis stroke="#fff" />
             <Tooltip />
-
-            <Line
-              type="monotone"
-              dataKey="totale"
-              stroke="#8884d8"
-              strokeWidth={2}
-            />
+            <Line type="monotone" dataKey="totale" stroke="#8884d8" />
           </LineChart>
         </ResponsiveContainer>
       </div>

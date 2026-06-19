@@ -27,7 +27,7 @@ import {
   ResponsiveContainer
 } from "recharts";
 
-/* 👇 mapping utenti */
+/* USERS */
 const userNames = {
   "alexcolli83@gmail.com": "Bobby",
   "alice.brogi91@gmail.com": "Alicia"
@@ -42,10 +42,6 @@ export default function Home() {
 
   const [spese, setSpese] = useState([]);
   const [lista, setLista] = useState([]);
-  
-   const svuotaLista = () => {
-    setLista([]);
-  };
 
   const [categoria, setCategoria] = useState("luce");
   const [importo, setImporto] = useState("");
@@ -56,7 +52,7 @@ export default function Home() {
     "-" +
     String(new Date().getMonth() + 1).padStart(2, "0");
 
-  /* ================= AUTH ================= */
+  /* AUTH */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u && allowedUsers.includes(u.email)) setUser(u);
@@ -65,7 +61,7 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  /* ================= FIRESTORE ================= */
+  /* FIRESTORE */
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "speseCasa"), (snap) => {
       setSpese(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -80,18 +76,22 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  /* ================= AUTH ACTIONS ================= */
+  /* AUTH */
   const login = () => signInWithEmailAndPassword(auth, email, password);
   const register = () => createUserWithEmailAndPassword(auth, email, password);
   const logout = () => signOut(auth);
 
-  /* ================= ADD SPESA ================= */
+  /* ADD SPESA */
   const aggiungiSpesa = async () => {
     if (!importo) return;
 
+    const val = parseFloat(importo.replace(",", "."));
+
+    if (isNaN(val)) return;
+
     await addDoc(collection(db, "speseCasa"), {
       categoria,
-      importo: Number(importo),
+      importo: val,
       mese: meseCorrente,
       data: new Date(),
       user: auth.currentUser.email
@@ -104,7 +104,7 @@ export default function Home() {
     await deleteDoc(doc(db, "speseCasa", id));
   };
 
-  /* ================= LISTA ================= */
+  /* LISTA */
   const aggiungiItem = async () => {
     if (!item) return;
 
@@ -121,7 +121,11 @@ export default function Home() {
     await deleteDoc(doc(db, "listaSpesa", id));
   };
 
-  /* ================= FILTRO MESE ================= */
+  const svuotaLista = () => {
+    setLista([]);
+  };
+
+  /* FILTRO */
   const speseMese = useMemo(() => {
     return spese.filter((s) => {
       if (!s.data) return false;
@@ -136,13 +140,23 @@ export default function Home() {
     });
   }, [spese]);
 
-  /* ================= TOTALE ================= */
+  /* UPDATE FIREBASE IMPORTO */
+  const modificaImporto = async (id, val) => {
+    const parsed = parseFloat(val.replace(",", "."));
+    if (isNaN(parsed)) return;
+
+    await updateDoc(doc(db, "speseCasa", id), {
+      importo: parsed
+    });
+  };
+
+  /* TOTALE */
   const totaleMese = speseMese.reduce((acc, s) => {
     const v = Number(s.importo);
     return acc + (isNaN(v) ? 0 : v);
   }, 0);
 
-  /* ================= GRAFICO CUMULATIVO ================= */
+  /* GRAFICO */
   const datiGrafico = useMemo(() => {
     const map = {};
 
@@ -152,350 +166,130 @@ export default function Home() {
       const d = new Date(s.data.seconds * 1000);
       const giorno = d.getDate();
 
-      const importo = Number(s.importo);
-      if (isNaN(importo)) return;
+      const val = Number(s.importo);
+      if (isNaN(val)) return;
 
       const persona = userNames[s.user] || "Altro";
 
       if (!map[giorno]) {
-        map[giorno] = {
-          giorno,
-          Bobby: 0,
-          Alicia: 0,
-          totale: 0
-        };
+        map[giorno] = { giorno, Bobby: 0, Alicia: 0, totale: 0 };
       }
 
-      map[giorno].totale += importo;
+      map[giorno].totale += val;
 
-      if (persona === "Bobby") map[giorno].Bobby += importo;
-      if (persona === "Alicia") map[giorno].Alicia += importo;
+      if (persona === "Bobby") map[giorno].Bobby += val;
+      if (persona === "Alicia") map[giorno].Alicia += val;
     });
 
     const sorted = Object.values(map).sort((a, b) => a.giorno - b.giorno);
 
-    let sumB = 0;
-    let sumA = 0;
-    let sumT = 0;
+    let b = 0, a = 0, t = 0;
 
     return sorted.map((d) => {
-      sumB += d.Bobby;
-      sumA += d.Alicia;
-      sumT += d.totale;
+      b += d.Bobby;
+      a += d.Alicia;
+      t += d.totale;
 
-      return {
-        giorno: d.giorno,
-        Bobby: sumB,
-        Alicia: sumA,
-        totale: sumT
-      };
+      return { giorno: d.giorno, Bobby: b, Alicia: a, totale: t };
     });
   }, [speseMese]);
 
-  /* ================= LOGIN PAGE ================= */
+  /* LOGIN */
   if (!user) {
     return (
       <main style={{ padding: 20 }}>
-        <h1>Login Casa App</h1>
-
+        <h1>Login</h1>
         <input placeholder="email" onChange={(e) => setEmail(e.target.value)} />
-        <input
-          type="password"
-          placeholder="password"
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
+        <input type="password" onChange={(e) => setPassword(e.target.value)} />
         <button onClick={login}>Login</button>
         <button onClick={register}>Register</button>
       </main>
     );
   }
 
-  /* ================= APP ================= */
   return (
     <main style={{ padding: 20 }}>
       <h1>🏠 Casa App PRO</h1>
-	  
-<div
-  style={{
-    position: "absolute",
-    top: 20,
-    right: 20
-  }}
->
-  <a
-    href="/categories"
-    style={{
-      color: "cyan",
-      display: "block",
-      marginBottom: 10
-    }}
-  >
-    📊 Spese per categoria
-  </a>
 
-  <a
-    href="/history"
-    style={{
-      color: "cyan",
-      textDecoration: "none",
-      fontWeight: "bold"
-    }}
-  >
-    📊 Storico mesi
-  </a>
-</div>
       <p>{userNames[user.email] || user.email}</p>
       <button onClick={logout}>Logout</button>
 
       <hr />
 
-      {/* TOTALE */}
-      <h2>💰 Totale mese: €{totaleMese}</h2>
+      <h2>💰 Totale: €{totaleMese}</h2>
 
-      {/* GRAFICO */}
-      <h3>📊 Andamento spese</h3>
+      <h3>📊 Grafico</h3>
 
       <div style={{ width: "100%", height: 260 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer>
           <LineChart data={datiGrafico}>
             <XAxis dataKey="giorno" />
             <YAxis />
             <Tooltip />
-
-            <Line type="monotone" dataKey="totale" stroke="#8884d8" />
-            <Line type="monotone" dataKey="Bobby" stroke="#82ca9d" />
-            <Line type="monotone" dataKey="Alicia" stroke="#ffc658" />
+            <Line dataKey="totale" stroke="#8884d8" />
           </LineChart>
         </ResponsiveContainer>
       </div>
-	  
 
       <hr />
 
-     
+      {/* INPUT */}
+      <select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+        <option value="luce">luce</option>
+        <option value="gas">gas</option>
+        <option value="acqua">acqua</option>
+        <option value="telefono">telefono</option>
+        <option value="internet">internet</option>
+        <option value="spesa">spesa</option>
+        <option value="altro">altro</option>
+      </select>
 
-      {/* CALENDARIO A GRIGLIA */}
-      <h3>📅 Calendario mensile</h3>
+      <input
+        value={importo}
+        onChange={(e) => setImporto(e.target.value)}
+        placeholder="12,50"
+      />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 8
-        }}
-      >
-        {Array.from({ length: 30 }).map((_, i) => {
-          const giorno = i + 1;
-
-          const speseG = speseMese.filter((s) => {
-            const d = new Date(s.data.seconds * 1000);
-            return d.getDate() === giorno;
-          });
-
-          const tot = speseG.reduce(
-            (a, s) => a + Number(s.importo),
-            0
-          );
-
-          return (
-            <div
-              key={giorno}
-              style={{
-                border: "1px solid #333",
-                padding: 6,
-                borderRadius: 6,
-                minHeight: 50,
-                background: tot > 0 ? "#1f2937" : "#0f0f0f",
-                color: tot > 0 ? "#fff" : "#666"
-              }}
-            >
-              <strong>{giorno}</strong>
-              <div style={{ fontSize: 12 }}>
-                {tot > 0 ? `€${tot}` : ""}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <button onClick={aggiungiSpesa}>Aggiungi</button>
 
       <hr />
-	  
-{/* INPUT */}
-<div style={{ margin: "20px 0" }}>
-  
-  <select
-    value={categoria}
-    onChange={(e) => setCategoria(e.target.value)}
-    style={{
-      display: "block",
-      marginBottom: "12px",
-      padding: "8px",
-      backgroundColor: "#1f2937",
-      color: "white",
-      border: "1px solid #444",
-      borderRadius: "6px"
-    }}
-  >
-    <option value="luce">luce</option>
-    <option value="gas">gas</option>
-    <option value="acqua">acqua</option>
-    <option value="telefono">telefono</option>
-    <option value="internet">internet</option>
-    <option value="spesa">spesa</option>
-    <option value="altro">altro</option>
-  </select>
-
-  <input
-    value={importo}
-    onChange={(e) => setImporto(e.target.value)}
-    placeholder="Importo"
-    style={{
-      display: "block",
-      marginBottom: "12px",
-      padding: "8px",
-      backgroundColor: "#374151",  // più visibile su nero
-      color: "white",
-      border: "1px solid #555",
-      borderRadius: "6px"
-    }}
-  />
-
-  <button
-    onClick={aggiungiSpesa}
-    style={{
-      padding: "8px 12px",
-      borderRadius: "6px",
-      backgroundColor: "#06b6d4",
-      color: "black",
-      fontWeight: "bold",
-      border: "none",
-      cursor: "pointer"
-    }}
-  >
-    Aggiungi
-  </button>
-
-</div>
-
-<hr />
 
       {/* LISTA */}
-<h3>📋 Lista spese</h3>
+      <h3>📋 Lista spese</h3>
 
-{[...speseMese]
-  .sort((a, b) => a.data.seconds - b.data.seconds)
-  .map((s) => (
-   <div
-  key={s.id}
-  style={{
-    display: "grid",
-    gridTemplateColumns: "1fr 90px 40px",
-    alignItems: "center",
-    padding: "6px 0",
-    borderBottom: "1px solid #222"
-  }}
->
-  {/* SINISTRA */}
-  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-    <span style={{ width: 30 }}>
-      {new Date(s.data.seconds * 1000).getDate()}
-    </span>
+      {[...speseMese]
+        .sort((a, b) => a.data.seconds - b.data.seconds)
+        .map((s) => (
+          <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1fr 90px 40px" }}>
+            
+            <div>
+              {new Date(s.data.seconds * 1000).getDate()} - {s.categoria}
+            </div>
 
-    <span>{s.categoria}</span>
+            <input
+              value={s.importo}
+              onChange={(e) => modificaImporto(s.id, e.target.value)}
+              style={{ textAlign: "right" }}
+            />
 
-    <span style={{ opacity: 0.7 }}>
-      {userNames[s.user] || s.user}
-    </span>
-  </div>
+            <button onClick={() => eliminaSpesa(s.id)}>❌</button>
+          </div>
+        ))}
 
-  {/* IMPORTO (colonna fissa) */}
-  <div
-  style={{
-    textAlign: "right",
-    fontVariantNumeric: "tabular-nums",
-    fontWeight: "bold"
-  }}
->
-  <input
-    defaultValue={
-  isNaN(Number(s.importo)) ? "" : String(s.importo)
-}
-    onBlur={(e) => modificaImporto(s.id, e.target.value)}
-    style={{
-      width: 70,
-      textAlign: "right",
-      background: "transparent",
-      border: "1px solid transparent",
-      color: "white",
-      outline: "none"
-    }}
-  />
-</div>
-
-  {/* X SEMPRE STESSA POSIZIONE */}
-  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-    <button
-      onClick={() => eliminaSpesa(s.id)}
-      style={{
-        background: "transparent",
-        border: "none",
-        color: "red",
-        cursor: "pointer",
-        fontSize: "16px"
-      }}
-    >
-      ❌
-    </button>
-  </div>
-</div>
-  ))}
       <hr />
 
-     {/* LISTA SPESA */}
-<div style={{ textAlign: "center" }}>
-  <h3>🛒 Lista spesa</h3>
+      {/* LISTA SPESA */}
+      <h3>🛒 Lista</h3>
 
-  <button
-    onClick={svuotaLista}
-    style={{
-      background: "transparent",
-      border: "none",
-      color: "red",
-      fontSize: "15px",
-      fontWeight: "bold",
-      cursor: "pointer",
-      marginTop: "5px"
-    }}
-  >
-    ✖ Svuota lista
-  </button>
-</div>
+      <input value={item} onChange={(e) => setItem(e.target.value)} />
+      <button onClick={aggiungiItem}>Aggiungi</button>
 
-<input
-  value={item}
-  onChange={(e) => setItem(e.target.value)}
-  style={{
-    backgroundColor: "#1f2937",
-    color: "white",
-    border: "1px solid #444",
-    padding: "6px",
-    borderRadius: "6px",
-    marginRight: "8px"
-  }}
-/>
-
-<button onClick={aggiungiItem}>Aggiungi</button>
-
-{lista.map((l) => (
-  <div key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
-    <span>{l.nome}</span>
-
-    <button onClick={() => eliminaItem(l.id)} style={{ color: "red", background: "transparent", border: "none" }}>
-      ❌
-    </button>
-  </div>
-))}
+      {lista.map((l) => (
+        <div key={l.id}>
+          {l.nome}
+          <button onClick={() => eliminaItem(l.id)}>❌</button>
+        </div>
+      ))}
     </main>
   );
 }
