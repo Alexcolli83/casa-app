@@ -28,8 +28,8 @@ import {
 } from "recharts";
 
 const allowedUsers = [
-  "alexcolli83@gmail.com",
-  "alice.brogi91@gmail.com"
+  "alexcolli83@gmail.com": "Bobby",
+  "alice.brogi91@gmail.com": "Alicia"
 ];
 
 export default function Home() {
@@ -108,7 +108,8 @@ export default function Home() {
 
     await addDoc(collection(db, "listaSpesa"), {
       nome: item,
-      user: auth.currentUser.email,
+     user: auth.currentUser.email,
+nome: userNames[auth.currentUser.email] || auth.currentUser.email,
       data: new Date()
     });
 
@@ -129,20 +130,30 @@ export default function Home() {
 
   // GRAFICO GIORNALIERO
   const datiGrafico = useMemo(() => {
-    const map = {};
+  const map = {};
 
-    speseMese.forEach((s) => {
-      const day = new Date(s.data.seconds * 1000).getDate();
+  speseMese.forEach((s) => {
+    const giorno = new Date(s.data.seconds * 1000).getDate();
+    const persona = s.nome;
+    const importo = Number(s.importo);
 
-      if (!map[day]) {
-        map[day] = { giorno: day, totale: 0 };
-      }
+    if (!map[giorno]) {
+      map[giorno] = {
+        giorno,
+        totale: 0,
+        Bobby: 0,
+        Alicia: 0
+      };
+    }
 
-      map[day].totale += Number(s.importo);
-    });
+    map[giorno].totale += importo;
 
-    return Object.values(map).sort((a, b) => a.giorno - b.giorno);
-  }, [speseMese]);
+    if (persona === "Bobby") map[giorno].Bobby += importo;
+    if (persona === "Alicia") map[giorno].Alicia += importo;
+  });
+
+  return Object.values(map).sort((a, b) => a.giorno - b.giorno);
+}, [speseMese]);
 
   if (!user) {
     return (
@@ -169,18 +180,34 @@ export default function Home() {
       <h2>💰 Totale mese: €{totaleMese}</h2>
 
       {/* GRAFICO */}
-      <h3>📊 Andamento giornaliero</h3>
+      <h3>📊 Spese per persona</h3>
 
-      <div style={{ width: "100%", height: 250 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={datiGrafico}>
-            <XAxis dataKey="giorno" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="totale" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+<div style={{ width: "100%", height: 250 }}>
+  <ResponsiveContainer width="100%" height="100%">
+    <BarChart
+      data={Object.values(
+        speseMese.reduce((acc, s) => {
+          const name = s.nome || "unknown";
+
+          if (!acc[name]) {
+            acc[name] = { persona: name, totale: 0 };
+          }
+
+          acc[name].totale += Number(s.importo);
+
+          return acc;
+        }, {})
+      )}
+    >
+      <XAxis dataKey="persona" />
+      <YAxis />
+      <Tooltip />
+      <Bar dataKey="totale" />
+	<Bar dataKey="Bobby" />
+	<Bar dataKey="Alicia" />
+    </BarChart>
+  </ResponsiveContainer>
+</div>
 
       <hr />
 
@@ -201,26 +228,29 @@ export default function Home() {
       <hr />
 
       {/* CALENDARIO */}
-      <h3>📅 Spese del mese</h3>
+      <h3>📅 Calendario spese</h3>
 
-      {speseMese.map((s) => (
-        <div key={s.id} style={{ display: "flex", justifyContent: "space-between" }}>
-          <div>
-            <small>{s.user}</small>
-            <div>
-              {s.categoria} - €{s.importo}
-            </div>
-          </div>
+{speseMese.map((s) => (
+  <div
+    key={s.id}
+    style={{
+      display: "grid",
+      gridTemplateColumns: "80px 1fr 80px 40px",
+      padding: "6px 0",
+      alignItems: "center"
+    }}
+  >
+    <span>{new Date(s.data.seconds * 1000).getDate()}</span>
 
-          <input
-            defaultValue={s.importo}
-            onBlur={(e) => modificaImporto(s.id, e.target.value)}
-            style={{ width: 60 }}
-          />
+    <span>
+      {s.nome} - {s.categoria}
+    </span>
 
-          <button onClick={() => eliminaSpesa(s.id)}>❌</button>
-        </div>
-      ))}
+    <strong>€{s.importo}</strong>
+
+    <button onClick={() => eliminaSpesa(s.id)}>❌</button>
+  </div>
+))}
 
       <hr />
 
