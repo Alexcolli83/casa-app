@@ -19,18 +19,21 @@ import {
 } from "firebase/firestore";
 
 import {
-  BarChart,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer
 } from "recharts";
 
-const allowedUsers = [
+/* 👇 mapping utenti */
+const userNames = {
   "alexcolli83@gmail.com": "Bobby",
   "alice.brogi91@gmail.com": "Alicia"
-];
+};
+
+const allowedUsers = Object.keys(userNames);
 
 export default function Home() {
   const [user, setUser] = useState(null);
@@ -39,6 +42,10 @@ export default function Home() {
 
   const [spese, setSpese] = useState([]);
   const [lista, setLista] = useState([]);
+  
+   const svuotaLista = () => {
+    setLista([]);
+  };
 
   const [categoria, setCategoria] = useState("luce");
   const [importo, setImporto] = useState("");
@@ -49,7 +56,7 @@ export default function Home() {
     "-" +
     String(new Date().getMonth() + 1).padStart(2, "0");
 
-  // AUTH
+  /* ================= AUTH ================= */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u && allowedUsers.includes(u.email)) setUser(u);
@@ -58,7 +65,7 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  // FIRESTORE SPESE
+  /* ================= FIRESTORE ================= */
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "speseCasa"), (snap) => {
       setSpese(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -66,7 +73,6 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  // FIRESTORE LISTA
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "listaSpesa"), (snap) => {
       setLista(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -74,11 +80,12 @@ export default function Home() {
     return () => unsub();
   }, []);
 
+  /* ================= AUTH ACTIONS ================= */
   const login = () => signInWithEmailAndPassword(auth, email, password);
   const register = () => createUserWithEmailAndPassword(auth, email, password);
   const logout = () => signOut(auth);
 
-  // ADD SPESA
+  /* ================= ADD SPESA ================= */
   const aggiungiSpesa = async () => {
     if (!importo) return;
 
@@ -97,19 +104,13 @@ export default function Home() {
     await deleteDoc(doc(db, "speseCasa", id));
   };
 
-  const modificaImporto = async (id, val) => {
-    await updateDoc(doc(db, "speseCasa", id), {
-      importo: Number(val)
-    });
-  };
-
+  /* ================= LISTA ================= */
   const aggiungiItem = async () => {
     if (!item) return;
 
     await addDoc(collection(db, "listaSpesa"), {
       nome: item,
-     user: auth.currentUser.email,
-nome: userNames[auth.currentUser.email] || auth.currentUser.email,
+      user: auth.currentUser.email,
       data: new Date()
     });
 
@@ -120,48 +121,133 @@ nome: userNames[auth.currentUser.email] || auth.currentUser.email,
     await deleteDoc(doc(db, "listaSpesa", id));
   };
 
-  // FILTRI
-  const speseMese = spese.filter((s) => s.mese === meseCorrente);
+  /* ================= FILTRO MESE ================= */
+  const speseMese = useMemo(() => {
+    return spese.filter((s) => {
+      if (!s.data) return false;
 
-  const totaleMese = speseMese.reduce(
-    (acc, s) => acc + Number(s.importo),
-    0
-  );
+      const d = new Date(s.data.seconds * 1000);
+      const mese =
+        d.getFullYear() +
+        "-" +
+        String(d.getMonth() + 1).padStart(2, "0");
 
-  // GRAFICO GIORNALIERO
+      return mese === meseCorrente;
+    });
+  }, [spese]);
+
+  /* ================= TOTALE ================= */
+  const totaleMese = speseMese.reduce((acc, s) => {
+    const v = Number(s.importo);
+    return acc + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  /* ================= GRAFICO CUMULATIVO ================= */
   const datiGrafico = useMemo(() => {
     const map = {};
 
     speseMese.forEach((s) => {
-      const day = new Date(s.data.seconds * 1000).getDate();
+      if (!s.data) return;
 
-      if (!map[day]) {
-        map[day] = { giorno: day, totale: 0 };
+      const d = new Date(s.data.seconds * 1000);
+      const giorno = d.getDate();
+
+      const importo = Number(s.importo);
+      if (isNaN(importo)) return;
+
+      const persona = userNames[s.user] || "Altro";
+
+      if (!map[giorno]) {
+        map[giorno] = {
+          giorno,
+          Bobby: 0,
+          Alicia: 0,
+          totale: 0
+        };
       }
 
-      map[day].totale += Number(s.importo);
+      map[giorno].totale += importo;
+
+      if (persona === "Bobby") map[giorno].Bobby += importo;
+      if (persona === "Alicia") map[giorno].Alicia += importo;
     });
 
-    return Object.values(map).sort((a, b) => a.giorno - b.giorno);
+    const sorted = Object.values(map).sort((a, b) => a.giorno - b.giorno);
+
+    let sumB = 0;
+    let sumA = 0;
+    let sumT = 0;
+
+    return sorted.map((d) => {
+      sumB += d.Bobby;
+      sumA += d.Alicia;
+      sumT += d.totale;
+
+      return {
+        giorno: d.giorno,
+        Bobby: sumB,
+        Alicia: sumA,
+        totale: sumT
+      };
+    });
   }, [speseMese]);
 
+  /* ================= LOGIN PAGE ================= */
   if (!user) {
     return (
       <main style={{ padding: 20 }}>
         <h1>Login Casa App</h1>
+
         <input placeholder="email" onChange={(e) => setEmail(e.target.value)} />
-        <input type="password" placeholder="password" onChange={(e) => setPassword(e.target.value)} />
+        <input
+          type="password"
+          placeholder="password"
+          onChange={(e) => setPassword(e.target.value)}
+        />
+
         <button onClick={login}>Login</button>
         <button onClick={register}>Register</button>
       </main>
     );
   }
 
+  /* ================= APP ================= */
   return (
     <main style={{ padding: 20 }}>
       <h1>🏠 Casa App PRO</h1>
-
-      <p>{user.email}</p>
+	  
+	<div
+  style={{
+    position: "absolute",
+    top: 20,
+    right: 20
+  }}
+>
+  <a
+    href="/history"
+    style={{
+      color: "cyan",
+      textDecoration: "none",
+      fontWeight: "bold"
+    }}
+  >
+  
+   📊 Storico mesi
+  </a>
+  
+  <a
+  href="/categories"
+  style={{
+    color: "cyan",
+    display: "block",
+    marginTop: 10
+  }}
+>
+  📊 Spese per categoria
+</a>
+   
+</div>
+      <p>{userNames[user.email] || user.email}</p>
       <button onClick={logout}>Logout</button>
 
       <hr />
@@ -170,32 +256,22 @@ nome: userNames[auth.currentUser.email] || auth.currentUser.email,
       <h2>💰 Totale mese: €{totaleMese}</h2>
 
       {/* GRAFICO */}
-      <h3>📊 Spese per persona</h3>
+      <h3>📊 Andamento spese</h3>
 
-<div style={{ width: "100%", height: 250 }}>
-  <ResponsiveContainer width="100%" height="100%">
-    <BarChart
-      data={Object.values(
-        speseMese.reduce((acc, s) => {
-          const name = s.nome || "unknown";
+      <div style={{ width: "100%", height: 260 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={datiGrafico}>
+            <XAxis dataKey="giorno" />
+            <YAxis />
+            <Tooltip />
 
-          if (!acc[name]) {
-            acc[name] = { persona: name, totale: 0 };
-          }
-
-          acc[name].totale += Number(s.importo);
-
-          return acc;
-        }, {})
-      )}
-    >
-      <XAxis dataKey="persona" />
-      <YAxis />
-      <Tooltip />
-      <Bar dataKey="totale" />
-    </BarChart>
-  </ResponsiveContainer>
-</div>
+            <Line type="monotone" dataKey="totale" stroke="#8884d8" />
+            <Line type="monotone" dataKey="Bobby" stroke="#82ca9d" />
+            <Line type="monotone" dataKey="Alicia" stroke="#ffc658" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+	  
 
       <hr />
 
@@ -215,45 +291,167 @@ nome: userNames[auth.currentUser.email] || auth.currentUser.email,
 
       <hr />
 
-      {/* CALENDARIO */}
-      <h3>📅 Calendario spese</h3>
+      {/* CALENDARIO A GRIGLIA */}
+      <h3>📅 Calendario mensile</h3>
 
-{speseMese.map((s) => (
-  <div
-    key={s.id}
-    style={{
-      display: "grid",
-      gridTemplateColumns: "80px 1fr 80px 40px",
-      padding: "6px 0",
-      alignItems: "center"
-    }}
-  >
-    <span>{new Date(s.data.seconds * 1000).getDate()}</span>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(7, 1fr)",
+          gap: 8
+        }}
+      >
+        {Array.from({ length: 30 }).map((_, i) => {
+          const giorno = i + 1;
 
-    <span>
-      {s.nome} - {s.categoria}
-    </span>
+          const speseG = speseMese.filter((s) => {
+            const d = new Date(s.data.seconds * 1000);
+            return d.getDate() === giorno;
+          });
 
-    <strong>€{s.importo}</strong>
+          const tot = speseG.reduce(
+            (a, s) => a + Number(s.importo),
+            0
+          );
 
-    <button onClick={() => eliminaSpesa(s.id)}>❌</button>
-  </div>
-))}
+          return (
+            <div
+              key={giorno}
+              style={{
+                border: "1px solid #333",
+                padding: 6,
+                borderRadius: 6,
+                minHeight: 50,
+                background: tot > 0 ? "#1f2937" : "#0f0f0f",
+                color: tot > 0 ? "#fff" : "#666"
+              }}
+            >
+              <strong>{giorno}</strong>
+              <div style={{ fontSize: 12 }}>
+                {tot > 0 ? `€${tot}` : ""}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       <hr />
 
-      {/* LISTA SPESA */}
-      <h2>🛒 Lista spesa</h2>
+      {/* LISTA */}
+<h3>📋 Lista spese</h3>
 
-      <input value={item} onChange={(e) => setItem(e.target.value)} />
-      <button onClick={aggiungiItem}>Aggiungi</button>
+{[...speseMese]
+  .sort((a, b) => a.data.seconds - b.data.seconds)
+  .map((s) => (
+   <div
+  key={s.id}
+  style={{
+    display: "grid",
+    gridTemplateColumns: "1fr 90px 40px",
+    alignItems: "center",
+    padding: "6px 0",
+    borderBottom: "1px solid #222"
+  }}
+>
+  {/* SINISTRA */}
+  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+    <span style={{ width: 30 }}>
+      {new Date(s.data.seconds * 1000).getDate()}
+    </span>
 
-      {lista.map((l) => (
-        <div key={l.id}>
-          {l.nome}
-          <button onClick={() => eliminaItem(l.id)}>❌</button>
-        </div>
-      ))}
+    <span>{s.categoria}</span>
+
+    <span style={{ opacity: 0.7 }}>
+      {userNames[s.user] || s.user}
+    </span>
+  </div>
+
+  {/* IMPORTO (colonna fissa) */}
+  <div
+  style={{
+    textAlign: "right",
+    fontVariantNumeric: "tabular-nums",
+    fontWeight: "bold"
+  }}
+>
+  <input
+    defaultValue={
+  isNaN(Number(s.importo)) ? "" : String(s.importo)
+}
+    onBlur={(e) => modificaImporto(s.id, e.target.value)}
+    style={{
+      width: 70,
+      textAlign: "right",
+      background: "transparent",
+      border: "1px solid transparent",
+      color: "white",
+      outline: "none"
+    }}
+  />
+</div>
+
+  {/* X SEMPRE STESSA POSIZIONE */}
+  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+    <button
+      onClick={() => eliminaSpesa(s.id)}
+      style={{
+        background: "transparent",
+        border: "none",
+        color: "red",
+        cursor: "pointer",
+        fontSize: "16px"
+      }}
+    >
+      ❌
+    </button>
+  </div>
+</div>
+  ))}
+      <hr />
+
+     {/* LISTA SPESA */}
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+  <h3>🛒 Lista spesa</h3>
+
+  <button
+    onClick={svuotaLista}
+    style={{
+      background: "transparent",
+      border: "none",
+      color: "red",
+      fontSize: "22px",
+      fontWeight: "bold",
+      cursor: "pointer"
+    }}
+  >
+    ✖
+  </button>
+</div>
+
+<input
+  value={item}
+  onChange={(e) => setItem(e.target.value)}
+  style={{
+    backgroundColor: "#1f2937",
+    color: "white",
+    border: "1px solid #444",
+    padding: "6px",
+    borderRadius: "6px",
+    marginRight: "8px"
+  }}
+/>
+
+<button onClick={aggiungiItem}>Aggiungi</button>
+
+{lista.map((l) => (
+  <div key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+    <span>{l.nome}</span>
+
+    <button onClick={() => eliminaItem(l.id)} style={{ color: "red", background: "transparent", border: "none" }}>
+      ❌
+    </button>
+  </div>
+))}
     </main>
   );
 }
