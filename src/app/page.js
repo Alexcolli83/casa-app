@@ -1,26 +1,26 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/firebase";
 import {
-  createUserWithEmailAndPassword,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  createUserWithEmailAndPassword
 } from "firebase/auth";
 
 import {
   collection,
   addDoc,
   onSnapshot,
-  doc,
   deleteDoc,
+  doc,
   updateDoc
 } from "firebase/firestore";
 
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -33,83 +33,59 @@ const allowedUsers = [
 ];
 
 export default function Home() {
-  // AUTH
+  const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState(null);
 
-  // DATA
-  const now = new Date();
-  const defaultMonth =
-    now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
-
-  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
-
-  // SPESE
-  const [categoria, setCategoria] = useState("luce");
-  const [importo, setImporto] = useState("");
   const [spese, setSpese] = useState([]);
-
-  // LISTA SPESA
-  const [item, setItem] = useState("");
   const [lista, setLista] = useState([]);
 
-  // LOGIN
+  const [categoria, setCategoria] = useState("luce");
+  const [importo, setImporto] = useState("");
+  const [item, setItem] = useState("");
+
+  const meseCorrente =
+    new Date().getFullYear() +
+    "-" +
+    String(new Date().getMonth() + 1).padStart(2, "0");
+
+  // AUTH
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u && allowedUsers.includes(u.email)) setUser(u);
       else setUser(null);
     });
-
     return () => unsub();
   }, []);
 
-  // SPESE REALTIME
+  // FIRESTORE SPESE
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "speseCasa"), (snap) => {
       setSpese(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
-
     return () => unsub();
   }, []);
 
-  // LISTA REALTIME
+  // FIRESTORE LISTA
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "listaSpesa"), (snap) => {
       setLista(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
-
     return () => unsub();
   }, []);
 
-  // AUTH ACTIONS
-  const login = async () => {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    setUser(cred.user);
-  };
-
-  const register = async () => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    setUser(cred.user);
-  };
-
-  const logout = async () => {
-    await signOut(auth);
-    setUser(null);
-  };
+  const login = () => signInWithEmailAndPassword(auth, email, password);
+  const register = () => createUserWithEmailAndPassword(auth, email, password);
+  const logout = () => signOut(auth);
 
   // ADD SPESA
   const aggiungiSpesa = async () => {
     if (!importo) return;
 
-    const date = new Date();
-    const mese =
-      date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
-
     await addDoc(collection(db, "speseCasa"), {
       categoria,
       importo: Number(importo),
-      mese,
+      mese: meseCorrente,
       data: new Date(),
       user: auth.currentUser.email
     });
@@ -117,205 +93,145 @@ export default function Home() {
     setImporto("");
   };
 
-  // UPDATE SPESA
-  const modificaImporto = async (id, value) => {
+  const eliminaSpesa = async (id) => {
+    await deleteDoc(doc(db, "speseCasa", id));
+  };
+
+  const modificaImporto = async (id, val) => {
     await updateDoc(doc(db, "speseCasa", id), {
-      importo: Number(value)
+      importo: Number(val)
     });
   };
 
-  // DELETE LISTA
+  const aggiungiItem = async () => {
+    if (!item) return;
+
+    await addDoc(collection(db, "listaSpesa"), {
+      nome: item,
+      user: auth.currentUser.email,
+      data: new Date()
+    });
+
+    setItem("");
+  };
+
   const eliminaItem = async (id) => {
     await deleteDoc(doc(db, "listaSpesa", id));
   };
 
-  // FILTRO MESE
-  const speseFiltrate = useMemo(() => {
-    return spese.filter((s) => s.mese === selectedMonth);
-  }, [spese, selectedMonth]);
+  // FILTRI
+  const speseMese = spese.filter((s) => s.mese === meseCorrente);
 
-  // TOTALE MESE
-  const totale = useMemo(() => {
-    return speseFiltrate.reduce((acc, s) => acc + Number(s.importo || 0), 0);
-  }, [speseFiltrate]);
+  const totaleMese = speseMese.reduce(
+    (acc, s) => acc + Number(s.importo),
+    0
+  );
 
-  // GRAFICO MESI
-  const grafico = useMemo(() => {
+  // GRAFICO GIORNALIERO
+  const datiGrafico = useMemo(() => {
     const map = {};
 
-    spese.forEach((s) => {
-      if (!map[s.mese]) map[s.mese] = 0;
-      map[s.mese] += Number(s.importo || 0);
+    speseMese.forEach((s) => {
+      const day = new Date(s.data.seconds * 1000).getDate();
+
+      if (!map[day]) {
+        map[day] = { giorno: day, totale: 0 };
+      }
+
+      map[day].totale += Number(s.importo);
     });
 
-    return Object.keys(map)
-      .sort()
-      .map((m) => ({
-        mese: m,
-        totale: map[m]
-      }));
-  }, [spese]);
+    return Object.values(map).sort((a, b) => a.giorno - b.giorno);
+  }, [speseMese]);
 
-  // CALENDARIO
-  const calendario = useMemo(() => {
-    const year = Number(selectedMonth.split("-")[0]);
-    const month = Number(selectedMonth.split("-")[1]) - 1;
-
-    const days = new Date(year, month + 1, 0).getDate();
-
-    const map = {};
-
-    for (let i = 1; i <= days; i++) {
-      const key = `${selectedMonth}-${String(i).padStart(2, "0")}`;
-      map[key] = [];
-    }
-
-    speseFiltrate.forEach((s) => {
-      const date = new Date(s.data?.seconds ? s.data.seconds * 1000 : s.data);
-      const key = date.toISOString().split("T")[0];
-
-      if (map[key]) map[key].push(s);
-    });
-
-    return map;
-  }, [speseFiltrate, selectedMonth]);
-
-  // LOGIN VIEW
   if (!user) {
     return (
       <main style={{ padding: 20 }}>
-        <h2>Login Casa</h2>
-
-        <input placeholder="Email" onChange={(e) => setEmail(e.target.value)} />
-        <input placeholder="Password" type="password" onChange={(e) => setPassword(e.target.value)} />
-
+        <h1>Login Casa App</h1>
+        <input placeholder="email" onChange={(e) => setEmail(e.target.value)} />
+        <input type="password" placeholder="password" onChange={(e) => setPassword(e.target.value)} />
         <button onClick={login}>Login</button>
-        <button onClick={register}>Registrati</button>
+        <button onClick={register}>Register</button>
       </main>
     );
   }
 
-  // DASHBOARD
   return (
-    <main style={{ padding: 16, maxWidth: 420, margin: "0 auto" }}>
-      <h2>🏠 Dashboard Casa</h2>
+    <main style={{ padding: 20 }}>
+      <h1>🏠 Casa App PRO</h1>
 
       <p>{user.email}</p>
       <button onClick={logout}>Logout</button>
 
       <hr />
 
-      {/* MESE */}
-      <input
-        value={selectedMonth}
-        onChange={(e) => setSelectedMonth(e.target.value)}
-      />
-
-      <h3>💰 Totale: €{totale}</h3>
+      {/* TOTALE */}
+      <h2>💰 Totale mese: €{totaleMese}</h2>
 
       {/* GRAFICO */}
-      <div style={{ height: 180 }}>
+      <h3>📊 Andamento giornaliero</h3>
+
+      <div style={{ width: "100%", height: 250 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={grafico}>
-            <XAxis dataKey="mese" />
+          <BarChart data={datiGrafico}>
+            <XAxis dataKey="giorno" />
             <YAxis />
             <Tooltip />
-            <Line type="monotone" dataKey="totale" stroke="#4f46e5" />
-          </LineChart>
+            <Bar dataKey="totale" />
+          </BarChart>
         </ResponsiveContainer>
       </div>
 
       <hr />
 
-      {/* INSERIMENTO */}
+      {/* INPUT */}
       <select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-        <option>luce</option>
-        <option>gas</option>
-        <option>acqua</option>
-        <option>telefono</option>
-        <option>internet</option>
-        <option>spesa</option>
-        <option>altro</option>
+        <option value="luce">luce</option>
+        <option value="gas">gas</option>
+        <option value="acqua">acqua</option>
+        <option value="telefono">telefono</option>
+        <option value="internet">internet</option>
+        <option value="spesa">spesa</option>
+        <option value="altro">altro</option>
       </select>
 
-      <input
-        value={importo}
-        onChange={(e) => setImporto(e.target.value)}
-        placeholder="Importo"
-      />
-
+      <input value={importo} onChange={(e) => setImporto(e.target.value)} />
       <button onClick={aggiungiSpesa}>Aggiungi</button>
 
       <hr />
 
-      {/* SPESE */}
-      {speseFiltrate.map((s) => (
+      {/* CALENDARIO */}
+      <h3>📅 Spese del mese</h3>
+
+      {speseMese.map((s) => (
         <div key={s.id} style={{ display: "flex", justifyContent: "space-between" }}>
-          {s.categoria}
+          <div>
+            <small>{s.user}</small>
+            <div>
+              {s.categoria} - €{s.importo}
+            </div>
+          </div>
+
           <input
             defaultValue={s.importo}
             onBlur={(e) => modificaImporto(s.id, e.target.value)}
             style={{ width: 60 }}
           />
+
+          <button onClick={() => eliminaSpesa(s.id)}>❌</button>
         </div>
       ))}
 
       <hr />
 
-      {/* CALENDARIO */}
-      <h3>📅 Calendario</h3>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 4
-        }}
-      >
-        {Object.keys(calendario).map((day) => (
-          <div
-            key={day}
-            style={{
-              border: "1px solid #ddd",
-              padding: 4,
-              minHeight: 50,
-              fontSize: 10
-            }}
-          >
-            <strong>{day.split("-")[2]}</strong>
-
-            {calendario[day].map((s) => (
-              <div key={s.id}>€{s.importo}</div>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <hr />
-
       {/* LISTA SPESA */}
-      <h3>🛒 Lista</h3>
+      <h2>🛒 Lista spesa</h2>
 
       <input value={item} onChange={(e) => setItem(e.target.value)} />
-
-      <button
-        onClick={async () => {
-          if (!item) return;
-
-          await addDoc(collection(db, "listaSpesa"), {
-            nome: item,
-            user: auth.currentUser.email,
-            data: new Date()
-          });
-
-          setItem("");
-        }}
-      >
-        Aggiungi
-      </button>
+      <button onClick={aggiungiItem}>Aggiungi</button>
 
       {lista.map((l) => (
-        <div key={l.id} style={{ display: "flex", justifyContent: "space-between" }}>
+        <div key={l.id}>
           {l.nome}
           <button onClick={() => eliminaItem(l.id)}>❌</button>
         </div>
