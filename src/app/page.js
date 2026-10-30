@@ -11,18 +11,28 @@ import StoricoView from "@/components/StoricoView";
 import CategorieView from "@/components/CategorieView";
 import ListaView from "@/components/ListaView";
 import SpesaSheet from "@/components/SpesaSheet";
+import CalendarioView from "@/components/CalendarioView";
+import CeneView from "@/components/CeneView";
 
 const schede = [
-  { id: "mese", label: "Mese", icona: "🏠" },
-  { id: "storico", label: "Storico", icona: "🗓️" },
-  { id: "categorie", label: "Categorie", icona: "📊" },
+  { id: "spese", label: "Spese", icona: "💶" },
+  { id: "calendario", label: "Calendario", icona: "📅" },
+  { id: "cene", label: "Cene", icona: "🍝" },
   { id: "lista", label: "Lista", icona: "🛒" }
+];
+
+// Le tre viste delle spese, scelte dal selettore in alto
+const visteSpese = [
+  { id: "mese", label: "Mese" },
+  { id: "storico", label: "Storico" },
+  { id: "categorie", label: "Categorie" }
 ];
 
 export default function Home() {
   const [stato, setStato] = useState("carico"); // carico | fuori | negato | dentro
   const [user, setUser] = useState(null);
-  const [scheda, setScheda] = useState("mese");
+  const [scheda, setScheda] = useState("spese");
+  const [vista, setVista] = useState("mese");
   const [meseKey, setMeseKey] = useState(() => chiaveMese(new Date()));
   const [sheet, setSheet] = useState({ aperto: false, spesa: null });
   const [giornoScelto, setGiornoScelto] = useState(null);
@@ -47,7 +57,7 @@ export default function Home() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [scheda]);
+  }, [scheda, vista]);
 
   if (stato === "carico") {
     return <div className="min-h-dvh flex items-center justify-center text-5xl animate-pulse">🏠</div>;
@@ -82,9 +92,31 @@ export default function Home() {
       </header>
 
       <main className="max-w-lg mx-auto px-4 pt-2 pb-40">
-        {!pronto && scheda !== "lista" ? (
+        {scheda === "spese" && (
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-[#121824] border border-slate-800/80 mb-4">
+            {visteSpese.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setVista(v.id)}
+                className={`rounded-xl py-2 text-sm transition ${
+                  vista === v.id ? "bg-cyan-400 text-black font-semibold" : "text-slate-400"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {scheda === "calendario" ? (
+          <CalendarioView />
+        ) : scheda === "cene" ? (
+          <CeneView />
+        ) : scheda === "lista" ? (
+          <ListaView lista={lista} />
+        ) : !pronto ? (
           <div className="text-center text-slate-400 py-20">Carico le spese…</div>
-        ) : scheda === "mese" ? (
+        ) : vista === "mese" ? (
           <MeseView
             spese={spese}
             meseKey={meseKey}
@@ -98,17 +130,15 @@ export default function Home() {
             onApriMese={(k) => {
               setMeseKey(k);
               setGiornoScelto(null);
-              setScheda("mese");
+              setVista("mese");
             }}
           />
-        ) : scheda === "categorie" ? (
-          <CategorieView spese={spese} />
         ) : (
-          <ListaView lista={lista} />
+          <CategorieView spese={spese} />
         )}
       </main>
 
-      {scheda !== "lista" && (
+      {scheda === "spese" && (
         <button
           onClick={() => setSheet({ aperto: true, spesa: null })}
           aria-label="Aggiungi spesa"
