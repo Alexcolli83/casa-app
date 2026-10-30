@@ -1,5 +1,10 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps } from "firebase/app";
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -11,7 +16,25 @@ const firebaseConfig = {
   appId: "1:856995036307:web:1dab8d551e29cef51e6166"
 };
 
-const app = initializeApp(firebaseConfig);
+const firstInit = getApps().length === 0;
+const app = firstInit ? initializeApp(firebaseConfig) : getApps()[0];
 
-export const db = getFirestore(app);
+// Sul telefono teniamo una copia locale dei dati: l'app si apre subito
+// e funziona anche senza rete (si sincronizza appena torna la connessione).
+let firestore;
+if (firstInit && typeof window !== "undefined") {
+  try {
+    firestore = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    });
+  } catch {
+    firestore = getFirestore(app);
+  }
+} else {
+  firestore = getFirestore(app);
+}
+
+export const db = firestore;
 export const auth = getAuth(app);

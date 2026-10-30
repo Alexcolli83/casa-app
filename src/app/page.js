@@ -1,499 +1,151 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { auth, db } from "@/firebase";
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-  createUserWithEmailAndPassword
-} from "firebase/auth";
+import { useEffect, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "@/firebase";
+import { allowedUsers, chiaveMese, nomeUtente } from "@/lib/casa";
+import { useCasaData } from "@/lib/useCasaData";
+import Login from "@/components/Login";
+import MeseView from "@/components/MeseView";
+import StoricoView from "@/components/StoricoView";
+import CategorieView from "@/components/CategorieView";
+import ListaView from "@/components/ListaView";
+import SpesaSheet from "@/components/SpesaSheet";
 
-import {
-  collection,
-  addDoc,
-  onSnapshot,
-  deleteDoc,
-  doc,
-  updateDoc
-} from "firebase/firestore";
-
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer
-} from "recharts";
-
-/* 👇 mapping utenti */
-const userNames = {
-  "alexcolli83@gmail.com": "Bobby",
-  "alice.brogi91@gmail.com": "Alicia"
-};
-
-const allowedUsers = Object.keys(userNames);
+const schede = [
+  { id: "mese", label: "Mese", icona: "🏠" },
+  { id: "storico", label: "Storico", icona: "🗓️" },
+  { id: "categorie", label: "Categorie", icona: "📊" },
+  { id: "lista", label: "Lista", icona: "🛒" }
+];
 
 export default function Home() {
+  const [stato, setStato] = useState("carico"); // carico | fuori | negato | dentro
   const [user, setUser] = useState(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [scheda, setScheda] = useState("mese");
+  const [meseKey, setMeseKey] = useState(() => chiaveMese(new Date()));
+  const [sheet, setSheet] = useState({ aperto: false, spesa: null });
+  const [giornoScelto, setGiornoScelto] = useState(null);
 
-  const [spese, setSpese] = useState([]);
-  const [lista, setLista] = useState([]);
-  
-   const svuotaLista = () => {
-    setLista([]);
-  };
-
-  const [categoria, setCategoria] = useState("luce");
-  const [importo, setImporto] = useState("");
-  const [item, setItem] = useState("");
-
-  const meseCorrente =
-    new Date().getFullYear() +
-    "-" +
-    String(new Date().getMonth() + 1).padStart(2, "0");
-
-  /* ================= AUTH ================= */
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u && allowedUsers.includes(u.email)) setUser(u);
-      else setUser(null);
-    });
-    return () => unsub();
-  }, []);
-
-  /* ================= FIRESTORE ================= */
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "speseCasa"), (snap) => {
-      setSpese(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, []);
+  const { spese, lista, pronto } = useCasaData(user);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "listaSpesa"), (snap) => {
-      setLista(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, []);
-
-  /* ================= AUTH ACTIONS ================= */
-  const login = () => signInWithEmailAndPassword(auth, email, password);
-  const register = () => createUserWithEmailAndPassword(auth, email, password);
-  const logout = () => signOut(auth);
-
-  /* ================= ADD SPESA ================= */
-  const aggiungiSpesa = async () => {
-    if (!importo) return;
-
-    await addDoc(collection(db, "speseCasa"), {
-      categoria,
-      importo: Number(importo),
-      mese: meseCorrente,
-      data: new Date(),
-      user: auth.currentUser.email
-    });
-
-    setImporto("");
-  };
-
-  const eliminaSpesa = async (id) => {
-    await deleteDoc(doc(db, "speseCasa", id));
-  };
-
-  /* ================= LISTA ================= */
-  const aggiungiItem = async () => {
-    if (!item) return;
-
-    await addDoc(collection(db, "listaSpesa"), {
-      nome: item,
-      user: auth.currentUser.email,
-      data: new Date()
-    });
-
-    setItem("");
-  };
-
-  const eliminaItem = async (id) => {
-    await deleteDoc(doc(db, "listaSpesa", id));
-  };
-
-  /* ================= FILTRO MESE ================= */
-  const speseMese = useMemo(() => {
-    return spese.filter((s) => {
-      if (!s.data) return false;
-
-      const d = new Date(s.data.seconds * 1000);
-      const mese =
-        d.getFullYear() +
-        "-" +
-        String(d.getMonth() + 1).padStart(2, "0");
-
-      return mese === meseCorrente;
-    });
-  }, [spese]);
-
-  /* ================= TOTALE ================= */
-  const totaleMese = speseMese.reduce((acc, s) => {
-    const v = Number(s.importo);
-    return acc + (isNaN(v) ? 0 : v);
-  }, 0);
-
-  /* ================= GRAFICO CUMULATIVO ================= */
-  const datiGrafico = useMemo(() => {
-    const map = {};
-
-    speseMese.forEach((s) => {
-      if (!s.data) return;
-
-      const d = new Date(s.data.seconds * 1000);
-      const giorno = d.getDate();
-
-      const importo = Number(s.importo);
-      if (isNaN(importo)) return;
-
-      const persona = userNames[s.user] || "Altro";
-
-      if (!map[giorno]) {
-        map[giorno] = {
-          giorno,
-          Bobby: 0,
-          Alicia: 0,
-          totale: 0
-        };
+    // Apertura diretta da scorciatoia ("Aggiungi spesa" tenendo premuta l'icona)
+    const azione = new URLSearchParams(window.location.search).get("azione");
+    return onAuthStateChanged(auth, (u) => {
+      if (u && allowedUsers.includes(u.email)) {
+        setUser(u);
+        setStato("dentro");
+        if (azione === "nuova") setSheet({ aperto: true, spesa: null });
+        if (azione === "lista") setScheda("lista");
+      } else {
+        setUser(null);
+        setStato(u ? "negato" : "fuori");
       }
-
-      map[giorno].totale += importo;
-
-      if (persona === "Bobby") map[giorno].Bobby += importo;
-      if (persona === "Alicia") map[giorno].Alicia += importo;
     });
+  }, []);
 
-    const sorted = Object.values(map).sort((a, b) => a.giorno - b.giorno);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [scheda]);
 
-    let sumB = 0;
-    let sumA = 0;
-    let sumT = 0;
-
-    return sorted.map((d) => {
-      sumB += d.Bobby;
-      sumA += d.Alicia;
-      sumT += d.totale;
-
-      return {
-        giorno: d.giorno,
-        Bobby: sumB,
-        Alicia: sumA,
-        totale: sumT
-      };
-    });
-  }, [speseMese]);
-
-  /* ================= LOGIN PAGE ================= */
-  if (!user) {
-    return (
-      <main style={{ padding: 20 }}>
-        <h1>Login Casa App</h1>
-
-        <input placeholder="email" onChange={(e) => setEmail(e.target.value)} />
-        <input
-          type="password"
-          placeholder="password"
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
-        <button onClick={login}>Login</button>
-        <button onClick={register}>Register</button>
-      </main>
-    );
+  if (stato === "carico") {
+    return <div className="min-h-dvh flex items-center justify-center text-5xl animate-pulse">🏠</div>;
   }
+  if (stato !== "dentro") return <Login nonAutorizzato={stato === "negato"} />;
 
-  /* ================= APP ================= */
+  const meseCorrente = chiaveMese(new Date());
+  const dataNuova =
+    giornoScelto ||
+    (meseKey === meseCorrente
+      ? new Date()
+      : (() => {
+          const [y, m] = meseKey.split("-").map(Number);
+          return new Date(y, m, 0); // ultimo giorno del mese che stai guardando
+        })());
+
   return (
-    <main style={{ padding: 20 }}>
-      <h1>🏠 Casa App PRO</h1>
-	  
-<div
-  style={{
-    position: "absolute",
-    top: 20,
-    right: 20
-  }}
->
-  <a
-    href="/categories"
-    style={{
-      color: "cyan",
-      display: "block",
-      marginBottom: 10
-    }}
-  >
-    📊 Spese per categoria
-  </a>
+    <div className="min-h-dvh">
+      <header className="sticky top-0 z-30 bg-[#0b0f17]/85 backdrop-blur safe-top">
+        <div className="max-w-lg mx-auto flex items-center justify-between px-4 py-3">
+          <span className="font-bold">🏠 Casa App</span>
+          <button
+            onClick={() => confirm("Vuoi uscire?") && signOut(auth)}
+            className="text-sm text-slate-400 flex items-center gap-2"
+          >
+            {nomeUtente(user.email)}
+            <span className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center font-bold">
+              {nomeUtente(user.email).charAt(0)}
+            </span>
+          </button>
+        </div>
+      </header>
 
-  <a
-    href="/history"
-    style={{
-      color: "cyan",
-      textDecoration: "none",
-      fontWeight: "bold"
-    }}
-  >
-    📊 Storico mesi
-  </a>
-</div>
-      <p>{userNames[user.email] || user.email}</p>
-      <button onClick={logout}>Logout</button>
+      <main className="max-w-lg mx-auto px-4 pt-2 pb-40">
+        {!pronto && scheda !== "lista" ? (
+          <div className="text-center text-slate-400 py-20">Carico le spese…</div>
+        ) : scheda === "mese" ? (
+          <MeseView
+            spese={spese}
+            meseKey={meseKey}
+            setMeseKey={setMeseKey}
+            onApri={(s) => setSheet({ aperto: true, spesa: s })}
+            onGiornoScelto={setGiornoScelto}
+          />
+        ) : scheda === "storico" ? (
+          <StoricoView
+            spese={spese}
+            onApriMese={(k) => {
+              setMeseKey(k);
+              setGiornoScelto(null);
+              setScheda("mese");
+            }}
+          />
+        ) : scheda === "categorie" ? (
+          <CategorieView spese={spese} />
+        ) : (
+          <ListaView lista={lista} />
+        )}
+      </main>
 
-      <hr />
+      {scheda !== "lista" && (
+        <button
+          onClick={() => setSheet({ aperto: true, spesa: null })}
+          aria-label="Aggiungi spesa"
+          className="fixed z-40 right-5 w-16 h-16 rounded-full bg-cyan-400 text-black text-4xl font-light shadow-lg shadow-cyan-500/30 flex items-center justify-center active:scale-95 transition fab-pos"
+        >
+          +
+        </button>
+      )}
 
-      {/* TOTALE */}
-      <h2>💰 Totale mese: €{totaleMese}</h2>
-
-      {/* GRAFICO */}
-      <h3>📊 Andamento spese</h3>
-
-      <div style={{ width: "100%", height: 260 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={datiGrafico}>
-            <XAxis dataKey="giorno" />
-            <YAxis />
-            <Tooltip />
-
-            <Line type="monotone" dataKey="totale" stroke="#8884d8" />
-            <Line type="monotone" dataKey="Bobby" stroke="#82ca9d" />
-            <Line type="monotone" dataKey="Alicia" stroke="#ffc658" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-	  
-
-      <hr />
-
-     
-
-      {/* CALENDARIO A GRIGLIA */}
-      <h3>📅 Calendario mensile</h3>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 8
-        }}
-      >
-        {Array.from({ length: 30 }).map((_, i) => {
-          const giorno = i + 1;
-
-          const speseG = speseMese.filter((s) => {
-            const d = new Date(s.data.seconds * 1000);
-            return d.getDate() === giorno;
-          });
-
-          const tot = speseG.reduce(
-            (a, s) => a + Number(s.importo),
-            0
-          );
-
-          return (
-            <div
-              key={giorno}
-              style={{
-                border: "1px solid #333",
-                padding: 6,
-                borderRadius: 6,
-                minHeight: 50,
-                background: tot > 0 ? "#1f2937" : "#0f0f0f",
-                color: tot > 0 ? "#fff" : "#666"
-              }}
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#0f141d]/95 backdrop-blur border-t border-slate-800 safe-bottom">
+        <div className="max-w-lg mx-auto grid grid-cols-4">
+          {schede.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setScheda(s.id)}
+              className={`relative flex flex-col items-center gap-0.5 py-2.5 text-[11px] transition ${
+                scheda === s.id ? "text-cyan-300" : "text-slate-500"
+              }`}
             >
-              <strong>{giorno}</strong>
-              <div style={{ fontSize: 12 }}>
-                {tot > 0 ? `€${tot}` : ""}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              <span className={`text-xl transition ${scheda === s.id ? "" : "grayscale opacity-70"}`}>{s.icona}</span>
+              {s.label}
+              {s.id === "lista" && lista.length > 0 && (
+                <span className="absolute top-1.5 left-1/2 ml-2 bg-red-500 text-white text-[10px] rounded-full px-1.5">
+                  {lista.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </nav>
 
-      <hr />
-	  
-{/* INPUT */}
-<div style={{ margin: "20px 0", display: "flex", gap: "10px", alignItems: "center" }}>
-
-  <select
-    value={categoria}
-    onChange={(e) => setCategoria(e.target.value)}
-    style={{
-      padding: "8px",
-      backgroundColor: "#1f2937",
-      color: "white",
-      border: "1px solid #444",
-      borderRadius: "6px"
-    }}
-  >
-    <option value="luce">luce</option>
-    <option value="gas">gas</option>
-    <option value="acqua">acqua</option>
-    <option value="telefono">telefono</option>
-    <option value="internet">internet</option>
-    <option value="spesa">spesa</option>
-    <option value="altro">altro</option>
-  </select>
-
-  <input
-    value={importo}
-    onChange={(e) => setImporto(e.target.value)}
-    placeholder="Importo"
-    type="number"
-    style={{
-      flex: 1,
-      padding: "8px",
-      backgroundColor: "#374151",
-      color: "white",
-      border: "1px solid #555",
-      borderRadius: "6px",
-      minWidth: "90px"
-    }}
-  />
-
-  <button
-    onClick={aggiungiSpesa}
-    style={{
-      padding: "8px 12px",
-      borderRadius: "6px",
-      backgroundColor: "#06b6d4",
-      color: "black",
-      fontWeight: "bold",
-      border: "none",
-      cursor: "pointer",
-      whiteSpace: "nowrap"
-    }}
-  >
-    Aggiungi
-  </button>
-
-</div>
-
-      {/* LISTA */}
-<h3>📋 Lista spese</h3>
-
-{[...speseMese]
-  .sort((a, b) => a.data.seconds - b.data.seconds)
-  .map((s) => (
-   <div
-  key={s.id}
-  style={{
-    display: "grid",
-    gridTemplateColumns: "1fr 90px 40px",
-    alignItems: "center",
-    padding: "6px 0",
-    borderBottom: "1px solid #222"
-  }}
->
-  {/* SINISTRA */}
-  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-    <span style={{ width: 30 }}>
-      {new Date(s.data.seconds * 1000).getDate()}
-    </span>
-
-    <span>{s.categoria}</span>
-
-    <span style={{ opacity: 0.7 }}>
-      {userNames[s.user] || s.user}
-    </span>
-  </div>
-
-  {/* IMPORTO (colonna fissa) */}
-  <div
-  style={{
-    textAlign: "right",
-    fontVariantNumeric: "tabular-nums",
-    fontWeight: "bold"
-  }}
->
-  <input
-    defaultValue={
-  isNaN(Number(s.importo)) ? "" : String(s.importo)
-}
-    onBlur={(e) => modificaImporto(s.id, e.target.value)}
-    style={{
-      width: 70,
-      textAlign: "right",
-      background: "transparent",
-      border: "1px solid transparent",
-      color: "white",
-      outline: "none"
-    }}
-  />
-</div>
-
-  {/* X SEMPRE STESSA POSIZIONE */}
-  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-    <button
-      onClick={() => eliminaSpesa(s.id)}
-      style={{
-        background: "transparent",
-        border: "none",
-        color: "red",
-        cursor: "pointer",
-        fontSize: "16px"
-      }}
-    >
-      ❌
-    </button>
-  </div>
-</div>
-  ))}
-      <hr />
-
-     {/* LISTA SPESA */}
-<div style={{ textAlign: "center" }}>
-  <h3>🛒 Lista spesa</h3>
-
-  <button
-    onClick={svuotaLista}
-    style={{
-      background: "transparent",
-      border: "none",
-      color: "red",
-      fontSize: "15px",
-      fontWeight: "bold",
-      cursor: "pointer",
-      marginTop: "5px"
-    }}
-  >
-    ✖ Svuota lista
-  </button>
-</div>
-
-<input
-  value={item}
-  onChange={(e) => setItem(e.target.value)}
-  style={{
-    backgroundColor: "#1f2937",
-    color: "white",
-    border: "1px solid #444",
-    padding: "6px",
-    borderRadius: "6px",
-    marginRight: "8px"
-  }}
-/>
-
-<button onClick={aggiungiItem}>Aggiungi</button>
-
-{lista.map((l) => (
-  <div key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
-    <span>{l.nome}</span>
-
-    <button onClick={() => eliminaItem(l.id)} style={{ color: "red", background: "transparent", border: "none" }}>
-      ❌
-    </button>
-  </div>
-))}
-    </main>
+      <SpesaSheet
+        aperto={sheet.aperto}
+        spesa={sheet.spesa}
+        dataIniziale={dataNuova}
+        onChiudi={() => setSheet((x) => ({ ...x, aperto: false }))}
+      />
+    </div>
   );
 }

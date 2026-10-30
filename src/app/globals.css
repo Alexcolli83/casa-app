@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0f17;
+  --foreground: #e5e7eb;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,15 +13,64 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Spazi per notch e barra home dell'iPhone */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-bottom-sheet {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 1.25rem);
+  max-height: 92dvh;
+  overflow-y: auto;
+}
+.fab-pos {
+  bottom: calc(env(safe-area-inset-bottom) + 5.25rem);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+@layer components {
+  .card {
+    @apply rounded-3xl bg-[#121824] border border-slate-800/80 p-4;
+  }
+  .titolo-card {
+    @apply text-sm font-semibold text-slate-300 mb-3;
+  }
+  /* 16px minimo: evita lo zoom automatico dell'iPhone sui campi */
+  .campo {
+    @apply w-full rounded-2xl bg-[#0b0f17] border border-slate-700 px-4 py-3 text-base outline-none focus:border-cyan-400;
+  }
+  .btn-primario {
+    @apply rounded-2xl bg-cyan-400 text-black font-semibold py-3.5 active:scale-[0.98] transition;
+  }
+  .btn-tondo {
+    @apply w-11 h-11 rounded-full bg-[#121824] border border-slate-800 text-2xl flex items-center justify-center active:bg-slate-800;
+  }
+  .chip {
+    @apply shrink-0 rounded-full border border-slate-700 px-3.5 py-1.5 text-sm text-slate-300;
+  }
+  .chip-on {
+    @apply bg-cyan-400 border-cyan-400 text-black font-semibold;
+  }
 }
