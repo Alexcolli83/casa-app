@@ -79,13 +79,38 @@ async function chiamaModello(modello, corpo) {
   return j;
 }
 
+// Quanto far "ragionare" il modello prima di rispondere: poco, sennò è lentissimo.
+// I modelli nuovi vogliono thinkingLevel, i vecchi thinkingBudget: provo nell'ordine.
+const PENSIERO = [{ thinkingLevel: "minimal" }, { thinkingLevel: "low" }, { thinkingBudget: 0 }, null];
+const pensieroBuono = {}; // modello -> indice in PENSIERO che ha funzionato
+
+async function chiamaVeloce(modello, corpo) {
+  const inizio = pensieroBuono[modello] ?? 0;
+  let ultimo;
+  for (let i = inizio; i < PENSIERO.length; i++) {
+    const gc = { ...(corpo.generationConfig || {}) };
+    if (PENSIERO[i]) gc.thinkingConfig = PENSIERO[i];
+    try {
+      const j = await chiamaModello(modello, { ...corpo, generationConfig: gc });
+      pensieroBuono[modello] = i;
+      return j;
+    } catch (e) {
+      ultimo = e;
+      // solo se si lamenta del "thinking" provo la variante successiva
+      if (e.status === 400 && /think/i.test(e.message)) continue;
+      throw e;
+    }
+  }
+  throw ultimo;
+}
+
 /** Prova i modelli in ordine finché uno risponde. */
 async function gemini(corpo) {
   const lista = modelloBuono ? [modelloBuono, ...MODELLI.filter((m) => m !== modelloBuono)] : MODELLI;
   let ultimo;
   for (const m of lista) {
     try {
-      const j = await chiamaModello(m, corpo);
+      const j = await chiamaVeloce(m, corpo);
       modelloBuono = m;
       return j;
     } catch (e) {
@@ -278,8 +303,13 @@ export async function GET() {
   for (const m of MODELLI) {
     const t0 = Date.now();
     try {
-      await chiamaModello(m, { contents: [{ role: "user", parts: [{ text: "Rispondi solo: ok" }] }] });
-      esito.prove.push({ modello: m, esito: "OK", secondi: (Date.now() - t0) / 1000 });
+      await chiamaVeloce(m, { contents: [{ role: "user", parts: [{ text: "Rispondi solo: ok" }] }] });
+      esito.prove.push({
+        modello: m,
+        esito: "OK",
+        secondi: (Date.now() - t0) / 1000,
+        pensiero: JSON.stringify(PENSIERO[pensieroBuono[m]] ?? "default")
+      });
       break;
     } catch (e) {
       esito.prove.push({ modello: m, esito: "ERRORE " + (e.status || ""), dettaglio: String(e.message).slice(0, 200) });
