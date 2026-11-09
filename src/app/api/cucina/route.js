@@ -69,7 +69,7 @@ async function chiamaModello(modello, corpo) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": process.env.GEMINI_API_KEY || ""
+        "x-goog-api-key": (process.env.GEMINI_API_KEY || "").trim()
       },
       body: JSON.stringify(corpo)
     }
@@ -262,6 +262,31 @@ const AZIONI = { proposte, approfondisci, chiedi };
 // ---------- ingresso ----------
 
 const json = (dati, status = 200) => Response.json(dati, { status });
+
+// GET /api/cucina  -> pagina di controllo: la chiave c'è? Gemini risponde?
+// Non mostra la chiave e non restituisce testi, solo esiti.
+export async function GET() {
+  const chiave = process.env.GEMINI_API_KEY || "";
+  const esito = {
+    chiavePresente: !!chiave,
+    inizioChiave: chiave ? chiave.slice(0, 3) + "…" : null,
+    lunghezza: chiave.length,
+    spaziIntorno: chiave !== chiave.trim(),
+    prove: []
+  };
+  if (!chiave) return json(esito);
+  for (const m of MODELLI) {
+    const t0 = Date.now();
+    try {
+      await chiamaModello(m, { contents: [{ role: "user", parts: [{ text: "Rispondi solo: ok" }] }] });
+      esito.prove.push({ modello: m, esito: "OK", secondi: (Date.now() - t0) / 1000 });
+      break;
+    } catch (e) {
+      esito.prove.push({ modello: m, esito: "ERRORE " + (e.status || ""), dettaglio: String(e.message).slice(0, 200) });
+    }
+  }
+  return json(esito);
+}
 
 export async function POST(req) {
   if (!process.env.GEMINI_API_KEY) {

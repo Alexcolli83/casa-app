@@ -110,13 +110,19 @@ export async function chiediCucina(azione, dati) {
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
     body: JSON.stringify({ azione, ...dati })
   });
+  const testo = await r.text();
   let j = {};
   try {
-    j = await r.json();
+    j = JSON.parse(testo);
   } catch {
-    // risposta non JSON
+    // risposta non JSON (es. tempo scaduto su Vercel)
   }
-  if (!r.ok) throw new Error(j.errore || "Qualcosa è andato storto, riprova.");
+  if (!r.ok || !testo) {
+    throw new Error(
+      j.errore ||
+        `Qualcosa è andato storto (errore ${r.status}${testo ? ": " + testo.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140) : ""}).`
+    );
+  }
   return j;
 }
 
