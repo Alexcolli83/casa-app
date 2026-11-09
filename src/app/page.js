@@ -12,7 +12,7 @@ import CategorieView from "@/components/CategorieView";
 import ListaView from "@/components/ListaView";
 import SpesaSheet from "@/components/SpesaSheet";
 import CalendarioView from "@/components/CalendarioView";
-import CeneView from "@/components/CeneView";
+import CucinaView from "@/components/cucina/CucinaView";
 
 const schede = [
   { id: "spese", label: "Spese", icona: "💶" },
@@ -111,7 +111,7 @@ export default function Home() {
         {scheda === "calendario" ? (
           <CalendarioView />
         ) : scheda === "cene" ? (
-          <CeneView />
+          <CucinaView />
         ) : scheda === "lista" ? (
           <ListaView lista={lista} />
         ) : !pronto ? (
