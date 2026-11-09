@@ -20,10 +20,11 @@ const FIREBASE_API_KEY = "AIzaSyARqITBypOyeTeKsXhPCEggUyqNrCCN--s";
 
 const MODELLI = [
   process.env.GEMINI_MODEL,
+  "gemini-3.8-flash",
   "gemini-flash-latest",
-  "gemini-2.5-flash",
-  "gemini-2.0-flash"
-].filter(Boolean);
+  "gemini-flash-lite-latest",
+  "gemini-3.5-flash-lite"
+].filter((m, i, a) => m && a.indexOf(m) === i);
 
 let modelloBuono = null; // il primo che ha funzionato, per non riprovare ogni volta
 
