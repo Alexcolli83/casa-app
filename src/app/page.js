@@ -124,7 +124,7 @@ export default function Home() {
             onApri={(s) => setSheet({ aperto: true, spesa: s })}
             onGiornoScelto={setGiornoScelto}
           />
-        ) : scheda === "storico" ? (
+        ) : vista === "storico" ? (
           <StoricoView
             spese={spese}
             onApriMese={(k) => {
