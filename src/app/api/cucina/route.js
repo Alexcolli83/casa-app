@@ -248,7 +248,7 @@ DOVE CERCARE: fai il GIRO D'ITALIA. Procedi regione per regione, in quest'ordine
 ${REGIONI.join(", ")}, e alla fine qualcosa di internazionale.
 Per OGNI regione scrivi 2-3 ricette tipiche o ispirate a quella cucina che rispettano le nostre richieste
 (anche tradizionali poco conosciute). Salta una regione solo se proprio non ha nulla di adatto.
-Arriva fino in fondo alla scaletta, fino alla Sardegna: è normale e voluto che le righe siano tante. Non fermarti a metà.
+Arriva fino in fondo alla scaletta, fino alla Sardegna: è normale e voluto che i piatti siano tanti. Non fermarti a metà.
 
 ${cosa}
 
@@ -263,10 +263,16 @@ IN CASA C'È SEMPRE (dispensa base, usala liberamente): ${(b.dispensa || []).joi
 ${b.gusti ? `I NOSTRI GUSTI (ricette fatte di recente con voti e note dello chef: servono a capire cosa ci piace, NON sono richieste di oggi e non devono cambiare l'ingrediente principale):\n${b.gusti}` : ""}
 ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 
-FORMATO DELLA RISPOSTA (importantissimo):
-UNA RICETTA PER RIGA. Ogni riga è un oggetto JSON completo, su una sola riga. Finita una riga vai a capo e scrivi la successiva.
-Niente altro testo, niente parentesi quadre all'inizio o alla fine, niente \`\`\`.
-Esempio di riga:
+FORMATO DELLA RISPOSTA (importantissimo), in DUE PARTI:
+
+PARTE 1 – INDICE. Scrivi prima la riga "INDICE:" e poi ${Math.max(n, 40)} righe cortissime numerate, una per piatto,
+seguendo la scaletta delle regioni: "1. Nome del piatto – Regione". Solo titolo e regione, niente altro.
+
+PARTE 2 – SCHEDE. Poi scrivi la riga "SCHEDE:" e, NELLO STESSO ORDINE DELL'INDICE, una scheda per OGNI piatto dell'indice,
+senza saltarne nessuno: devi arrivare all'ultimo numero dell'indice.
+Ogni scheda è un oggetto JSON completo su UNA SOLA riga; finita una riga vai a capo e scrivi la successiva.
+Niente parentesi quadre all'inizio o alla fine, niente \`\`\`.
+Esempio di scheda:
 {"titolo":"nome del piatto","origine":"regione (es. Toscana) oppure internazionale: Paese","tipologia":"es. piatto povero contadino, secondo di mare","descrizione":"una frase che fa venire fame","perche":"perché è adatta a quello che abbiamo chiesto","ingredienti":["solo i principali, max 6, con quantità per ${persone}"],"daComprare":["solo ciò che probabilmente NON abbiamo in casa"],"passaggi":["3-4 passaggi brevissimi"],"tempoMinuti":30,"costoEuro":8,"padelle":1,"stagionale":true,"difficolta":"facile"}`;
 }
 
