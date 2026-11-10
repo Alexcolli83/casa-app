@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { addDoc, arrayUnion, collection, deleteDoc, doc, increment, updateDoc } from "firebase/firestore";
+import { addDoc, arrayUnion, collection, deleteDoc, doc, increment, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase";
-import { nomeUtente } from "@/lib/casa";
+import { nomeUtente, perInputData } from "@/lib/casa";
 import {
   chiediCucina,
   dataDoc,
@@ -26,6 +26,8 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
   const [carico, setCarico] = useState(false);
   const [errore, setErrore] = useState("");
   const [salvaAperto, setSalvaAperto] = useState(false);
+  const [settimanaAperta, setSettimanaAperta] = useState(false);
+  const [messaIn, setMessaIn] = useState("");
   const partito = useRef(false);
 
   const titolo = salvata?.titolo || completa?.titolo || proposta?.titolo;
@@ -93,6 +95,13 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
           <span>{sporcoLabel(r.padelle || p.padelle || salvata?.padelle)}</span>
           {r.porzioni && <span>🍽 {r.porzioni} porzioni</span>}
         </div>
+
+        <button
+          onClick={() => setSettimanaAperta(true)}
+          className="w-full rounded-2xl border border-cyan-400/50 text-cyan-300 py-2.5 text-sm"
+        >
+          {messaIn ? `📅 Messa in settimana: ${messaIn} ✓` : "📅 Mettila in settimana"}
+        </button>
 
         {salvata && <StoriaSalvata r={salvata} />}
 
@@ -215,6 +224,17 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
         )}
       </main>
 
+      {settimanaAperta && (
+        <SettimanaSheet
+          titolo={titolo}
+          onChiudi={() => setSettimanaAperta(false)}
+          onMessa={(giorno) => {
+            setMessaIn(giorno);
+            setSettimanaAperta(false);
+          }}
+        />
+      )}
+
       {salvaAperto && (
         <SalvaSheet
           proposta={p}
@@ -228,6 +248,79 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
           }}
         />
       )}
+    </div>
+  );
+}
+
+const fmtGiornoSett = new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "short" });
+
+/** Pannello: scegli in quale dei prossimi 7 giorni mettere la ricetta (scheda Cene). */
+function SettimanaSheet({ titolo, onChiudi, onMessa }) {
+  const [cene, setCene] = useState({});
+  const [scelto, setScelto] = useState(null);
+
+  const giorni = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  useEffect(
+    () =>
+      onSnapshot(collection(db, "cene"), (snap) => {
+        const m = {};
+        snap.docs.forEach((d) => (m[d.id] = d.data().testo || ""));
+        setCene(m);
+      }),
+    []
+  );
+
+  const metti = async (d, modo) => {
+    const k = perInputData(d);
+    const prima = (cene[k] || "").trim();
+    const testo = modo === "aggiungi" && prima ? `${prima} + ${titolo}` : titolo;
+    await setDoc(doc(db, "cene", k), { testo, user: auth.currentUser.email, aggiornato: new Date() });
+    const nome = fmtGiornoSett.format(d).split(" ")[0];
+    onMessa(nome);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60]">
+      <div onClick={onChiudi} className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-x-0 bottom-0 max-w-lg mx-auto bg-[#151b26] rounded-t-3xl px-5 pt-3 safe-bottom-sheet space-y-3">
+        <div className="w-10 h-1.5 bg-slate-600 rounded-full mx-auto" />
+        <h2 className="text-lg font-bold">In che giorno?</h2>
+        <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+          {giorni.map((d, i) => {
+            const k = perInputData(d);
+            const gia = (cene[k] || "").trim();
+            const aperto = scelto === k;
+            return (
+              <div key={k} className={`rounded-2xl border px-3 py-2.5 ${aperto ? "border-cyan-400/60" : "border-slate-800"}`}>
+                <button
+                  onClick={() => (gia ? setScelto(aperto ? null : k) : metti(d, "sostituisci"))}
+                  className="w-full flex items-center justify-between gap-3 text-left"
+                >
+                  <span className="font-semibold capitalize text-sm">
+                    {i === 0 ? "Stasera" : i === 1 ? "Domani" : fmtGiornoSett.format(d)}
+                  </span>
+                  <span className={`text-xs truncate ${gia ? "text-slate-400" : "text-slate-600"}`}>{gia || "libero"}</span>
+                </button>
+                {aperto && (
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => metti(d, "sostituisci")} className="flex-1 rounded-xl border border-slate-700 py-2 text-sm">
+                      Sostituisci
+                    </button>
+                    <button onClick={() => metti(d, "aggiungi")} className="flex-1 btn-primario py-2 text-sm">
+                      Aggiungi
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
