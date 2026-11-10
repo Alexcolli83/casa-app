@@ -208,18 +208,25 @@ ${f.testo ? `>>> RICHIESTA SCRITTA DA NOI, HA LA PRECEDENZA ASSOLUTA SU TUTTO IL
 Se contraddice le scelte qui sotto, vince questa. Se parla di cose da finire in frigo, ogni proposta deve usarle.
 ` : ""}
 LE NOSTRE SCELTE (se una voce manca, decidi tu):
-- Base: ${(f.basi || []).join(", ") || "libera"}
-- Tipi preferiti: ${(f.tipi || []).join(", ") || "varia tu"}
-- Verdure: ${(f.verdure || []).join(", ") || "a scelta, meglio se di stagione"}
+- BASE DEL PIATTO (è la ricerca principale): ${(f.basi || []).join(", ") || "libera"}
+- INGREDIENTE PRINCIPALE OBBLIGATORIO: ${(f.tipi || []).join(", ") || "non scelto, varia tu dentro la base"}
+- Verdure che abbiamo in casa da usare come contorno o condimento: ${(f.verdure || []).join(", ") || "a scelta, meglio se di stagione"}
 - Stile: ${(f.umori || []).join(", ") || "libero"}
 - Tempo massimo totale: ${f.tempo ? f.tempo + " minuti" : "nessun limite"}
 - Pentole: ${sporco}
 - Persone: ${persone}
 
 REGOLE:
-- Le ${n} proposte devono essere tutte DIVERSE: niente doppioni, niente variazioni dello stesso piatto.
-  Varia l'ingrediente principale (es. per la carne: pollo, maiale, vitello…; per il pesce: calamari, seppie, totani, orata, trota…) e anche la tecnica di cottura.
-- Se abbiamo scelto più basi, distribuiscile tra le proposte.
+${
+  (f.tipi || []).length
+    ? `- OGNI proposta deve avere come protagonista ${f.tipi.length === 1 ? `il/la ${f.tipi[0]}` : `uno di questi: ${f.tipi.join(", ")} (distribuiscili tra le proposte)`}. NON proporre altri tipi di carne, pesce o legumi.
+- Le ${n} proposte devono essere tutte DIVERSE tra loro: cambia taglio, cottura, condimento e stile (es. in padella, al forno, in umido, impanato, alla griglia…). Niente doppioni.`
+    : (f.basi || []).length
+      ? `- OGNI proposta deve avere come protagonista la base scelta (${f.basi.join(", ")}). Dentro la base varia l'ingrediente principale (es. carne: pollo, maiale, vitello…; pesce: calamari, seppie, orata, trota…). Se le basi sono più d'una, distribuiscile.
+- Le ${n} proposte devono essere tutte DIVERSE tra loro, niente doppioni.`
+      : `- Le ${n} proposte devono essere tutte DIVERSE tra loro: varia ingrediente principale e cottura, niente doppioni.`
+}
+- Le verdure scelte sono quelle che abbiamo: usale nelle proposte, ma la base resta il piatto principale (salvo lo stile "Più verdura che altro").
 - Usa ingredienti di stagione e prezzi ordinari di un supermercato italiano.
 
 IN CASA C'È SEMPRE (dispensa base): ${(b.dispensa || []).join(", ")}.
