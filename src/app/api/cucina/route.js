@@ -150,12 +150,13 @@ async function gemini(corpo, modelli, scadenza, maxMs = MAX_TENTATIVO) {
   throw ultimo || new ErroreGemini("tempo finito", 504);
 }
 
-const testoDi = (j) =>
+// testo "grezzo" (senza togliere spazi): serve nel flusso, dove i pezzi vanno incollati così come sono
+const testoGrezzo = (j) =>
   (j.candidates?.[0]?.content?.parts || [])
     .filter((p) => !p.thought)
     .map((p) => p.text || "")
-    .join("")
-    .trim();
+    .join("");
+const testoDi = (j) => testoGrezzo(j).trim();
 
 /** Estrae il JSON anche se il modello ci mette intorno ``` o due parole. */
 function leggiJSON(testo) {
@@ -262,10 +263,11 @@ IN CASA C'È SEMPRE (dispensa base, usala liberamente): ${(b.dispensa || []).joi
 ${b.gusti ? `I NOSTRI GUSTI (ricette fatte di recente con voti e note dello chef: servono a capire cosa ci piace, NON sono richieste di oggi e non devono cambiare l'ingrediente principale):\n${b.gusti}` : ""}
 ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 
-FORMATO DELLA RISPOSTA (importantissimo):
-scrivi ${n} righe, UNA RICETTA PER RIGA, ognuna è un oggetto JSON completo su una sola riga.
-Niente altro testo, niente elenco tra parentesi quadre, niente \`\`\`. Esempio di una riga:
-{"titolo":"nome del piatto","descrizione":"una frase che fa venire fame","perche":"perché è adatta a quello che abbiamo chiesto","ingredienti":[${n > 8 ? `"solo i principali, max 6, con quantità per ${persone}"` : `"ingrediente con quantità per ${persone}"`}],"daComprare":["solo ciò che probabilmente NON abbiamo in casa, vuoto se niente"],"passaggi":[${n > 8 ? '"3-4 passaggi brevissimi, una riga ciascuno"' : '"3-6 passaggi brevi"'}],"tempoMinuti":30,"costoEuro":8,"padelle":1,"stagionale":true,"difficolta":"facile|media|impegnativa","origine":"regione di provenienza (es. Toscana, Sicilia) oppure 'internazionale: Paese'","tipologia":"che tipo di piatto è, es. piatto povero contadino, secondo di mare, cucina di montagna"}`;
+COME COMPILARE OGNI RICETTA:
+- titolo: nome del piatto; origine: regione (es. Toscana) oppure "internazionale: Paese"; tipologia: es. piatto povero contadino, secondo di mare
+- ingredienti: ${n > 8 ? `solo i principali, max 6, con quantità per ${persone}` : `con quantità per ${persone}`}; daComprare: solo ciò che probabilmente NON abbiamo in casa
+- passaggi: ${n > 8 ? "3-4 passaggi brevissimi, una riga ciascuno" : "3-6 passaggi brevi"}; tempoMinuti totali; costoEuro indicativo totale; padelle = pentole/padelle sporcate
+Se non usi lo stampo JSON, scrivi UNA ricetta per riga come oggetto JSON con questi campi.`;
 }
 
 function promptApprofondisci(b) {
@@ -315,11 +317,54 @@ function righeRicette(testo) {
     .filter((x) => x?.titolo);
 }
 
-const corpoProposte = (b) => ({
-  systemInstruction: { parts: [{ text: CHEF }] },
-  contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
-  generationConfig: { temperature: 1, maxOutputTokens: 32000 }
+const MIN_RICETTE = 40;
+
+/** Lo "stampo" della risposta: Gemini NON può chiudere prima di MIN_RICETTE ricette. */
+const schemaRicette = (minimo) => ({
+  type: "object",
+  properties: {
+    ricette: {
+      type: "array",
+      minItems: minimo,
+      maxItems: 80,
+      items: {
+        type: "object",
+        properties: {
+          titolo: { type: "string" },
+          origine: { type: "string" },
+          tipologia: { type: "string" },
+          descrizione: { type: "string" },
+          perche: { type: "string" },
+          ingredienti: { type: "array", items: { type: "string" } },
+          daComprare: { type: "array", items: { type: "string" } },
+          passaggi: { type: "array", items: { type: "string" } },
+          tempoMinuti: { type: "integer" },
+          costoEuro: { type: "number" },
+          padelle: { type: "integer" },
+          stagionale: { type: "boolean" },
+          difficolta: { type: "string", enum: ["facile", "media", "impegnativa"] }
+        },
+        required: ["titolo", "origine", "tipologia", "descrizione", "ingredienti", "passaggi", "tempoMinuti", "costoEuro", "padelle", "stagionale", "difficolta"],
+        propertyOrdering: [
+          "titolo", "origine", "tipologia", "descrizione", "perche", "ingredienti", "daComprare",
+          "passaggi", "tempoMinuti", "costoEuro", "padelle", "stagionale", "difficolta"
+        ]
+      }
+    }
+  },
+  required: ["ricette"]
 });
+
+const corpoProposte = (b, conSchema = true) => {
+  const minimo = Math.min(MIN_RICETTE, Number(b.filtri?.quante) || MIN_RICETTE);
+  return {
+    systemInstruction: { parts: [{ text: CHEF }] },
+    contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
+    generationConfig: conSchema
+      ? { temperature: 1, maxOutputTokens: 32000, responseMimeType: "application/json", responseSchema: schemaRicette(minimo) }
+      : { temperature: 1, maxOutputTokens: 32000 }
+  };
+};
 
 // versione "tutto insieme" (di riserva)
 async function proposte(b, scadenza) {
@@ -332,13 +377,15 @@ async function proposte(b, scadenza) {
  * Al telefono mando il testo così com'è; è lui che taglia le righe.
  */
 /** Apre un flusso con il primo modello disponibile. Ritorna il body da leggere. */
-async function apriFlusso(corpo, scadenza) {
+async function apriFlusso(corpoIniziale, scadenza) {
+  let corpo = corpoIniziale;
   let ultimo;
   for (const m of VELOCI) {
     if (scadenza - Date.now() < 5000) break;
     for (let i = pensieroBuono[m] ?? 0; i < PENSIERO.length; i++) {
       const gc = { ...corpo.generationConfig };
       if (PENSIERO[i]) gc.thinkingConfig = PENSIERO[i];
+      const { senzaSchema, ...daMandare } = corpo;
       const ctrl = new AbortController();
       const attesa = setTimeout(() => ctrl.abort(), Math.min(20000, scadenza - Date.now()));
       let r;
@@ -351,7 +398,7 @@ async function apriFlusso(corpo, scadenza) {
               "Content-Type": "application/json",
               "x-goog-api-key": (process.env.GEMINI_API_KEY || "").trim()
             },
-            body: JSON.stringify({ ...corpo, generationConfig: gc }),
+            body: JSON.stringify({ ...daMandare, generationConfig: gc }),
             signal: ctrl.signal
           }
         );
@@ -367,6 +414,12 @@ async function apriFlusso(corpo, scadenza) {
         ultimo = new ErroreGemini(j.error?.message || "errore " + r.status, r.status, j.error?.details);
         console.warn("cucina flusso", m, r.status, String(ultimo.message).slice(0, 120));
         if (r.status === 400 && /think/i.test(ultimo.message)) continue; // altra variante di "pensiero"
+        if (r.status === 400 && /schema|minItems|propertyOrdering/i.test(ultimo.message) && corpo.senzaSchema) {
+          // lo stampo non piace a questo modello: riprovo con la versione "a righe"
+          corpo = corpo.senzaSchema;
+          i--;
+          continue;
+        }
         if ([404, 429, 500, 503].includes(r.status) || (r.status === 400 && /model/i.test(ultimo.message))) break;
         throw ultimo;
       }
@@ -399,12 +452,10 @@ async function proposteFlusso(b, scadenza) {
   const f = b.filtri || {};
   const obiettivo = Math.min(Number(f.quante) || 50, 60);
   const evitaBase = b.evita || [];
-  const corpoGiro = (fatte, titoli) =>
-    corpoProposte({
-      ...b,
-      filtri: { ...f, quante: Math.max(5, obiettivo - fatte) },
-      evita: [...evitaBase, ...titoli]
-    });
+  const corpoGiro = (fatte, titoli) => {
+    const bb = { ...b, filtri: { ...f, quante: Math.max(5, obiettivo - fatte) }, evita: [...evitaBase, ...titoli] };
+    return { ...corpoProposte(bb, true), senzaSchema: corpoProposte(bb, false) };
+  };
 
   const primo = await apriFlusso(corpoGiro(0, []), scadenza);
   const enc = new TextEncoder();
@@ -457,12 +508,55 @@ async function proposteFlusso(b, scadenza) {
 }
 
 /** Legge un giro di SSE da Gemini: gira il testo al telefono e conta le ricette nuove. */
+/**
+ * Estrattore a pezzi: riceve il testo man mano e tira fuori ogni oggetto JSON completo
+ * che ha un "titolo" (una ricetta), funziona sia con {"ricette":[{…},{…}]} sia con una per riga.
+ */
+function creaEstrattore(onRicetta) {
+  let buf = "";
+  let inStringa = false;
+  let escape = false;
+  const aperte = [];
+  return (testo) => {
+    for (const ch of testo) {
+      const pos = buf.length;
+      buf += ch;
+      if (inStringa) {
+        if (escape) escape = false;
+        else if (ch === "\\") escape = true;
+        else if (ch === '"') inStringa = false;
+        continue;
+      }
+      if (ch === '"') inStringa = true;
+      else if (ch === "{") aperte.push(pos);
+      else if (ch === "}") {
+        const inizio = aperte.pop();
+        if (inizio === undefined) continue;
+        try {
+          const o = JSON.parse(buf.slice(inizio, pos + 1));
+          if (o && typeof o.titolo === "string") onRicetta(o);
+        } catch {
+          // non era un oggetto valido: pazienza
+        }
+        if (!aperte.length) buf = "";
+      }
+    }
+  };
+}
+
+/** Legge un giro di SSE da Gemini: estrae le ricette e le manda al telefono una per riga. */
 async function leggiGiro(body, scadenza, manda, contaRiga) {
   const lettore = body.getReader();
   const dec = new TextDecoder();
   let resto = "";
-  let righe = "";
   let quante = 0;
+  const estrai = creaEstrattore((ric) => {
+    const riga = JSON.stringify(ric);
+    if (contaRiga(riga)) {
+      quante++;
+      manda(riga + "\n");
+    }
+  });
   try {
     for (;;) {
       if (Date.now() > scadenza) {
@@ -477,24 +571,17 @@ async function leggiGiro(body, scadenza, manda, contaRiga) {
       for (const ev of eventi) {
         const riga = ev.trim();
         if (!riga.startsWith("data:")) continue;
-        let t = "";
         try {
-          t = testoDi(JSON.parse(riga.slice(5)));
+          const t = testoGrezzo(JSON.parse(riga.slice(5)));
+          if (t) estrai(t);
         } catch {
-          continue;
+          // evento non leggibile
         }
-        if (!t) continue;
-        manda(t);
-        righe += t;
-        const pezzi = righe.split("\n");
-        righe = pezzi.pop();
-        for (const p of pezzi) if (contaRiga(p)) quante++;
       }
     }
   } catch (e) {
     console.warn("cucina lettura giro", e?.message);
   }
-  if (contaRiga(righe)) quante++;
   return { quante, tempo: false };
 }
 
