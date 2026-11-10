@@ -2,7 +2,7 @@
 // Tiene in cache la "scocca" dell'app così si apre anche senza rete.
 // I dati delle spese li gestisce Firebase (che ha già la sua copia offline).
 
-const CACHE = "casa-app-v2";
+const CACHE = "casa-app-v3";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/"])).catch(() => {}));
@@ -66,7 +66,7 @@ self.addEventListener("push", (e) => {
     self.registration.showNotification(d.titolo || "Casa App", {
       body: d.testo || "",
       icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
+      badge: "/icons/badge-casa.png",
       data: { url: d.url || "/" }
     })
   );
