@@ -189,6 +189,70 @@ export async function chiediCucina(azione, dati) {
   return j;
 }
 
+/**
+ * Chiede le proposte "a flusso": ogni ricetta, appena scritta, viene passata a onRicetta.
+ * Ritorna quante ne sono arrivate.
+ */
+export async function proposteAFlusso(dati, onRicetta) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Devi essere dentro l'app.");
+  const token = await u.getIdToken();
+  const r = await fetch("/api/cucina", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ azione: "proposteFlusso", ...dati })
+  });
+  if (!r.ok || !r.body) {
+    const testo = await r.text().catch(() => "");
+    let j = {};
+    try {
+      j = JSON.parse(testo);
+    } catch {
+      // non JSON
+    }
+    throw new Error(
+      j.errore || `Qualcosa è andato storto (errore ${r.status}: ${testo.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140)}).`
+    );
+  }
+
+  const lettore = r.body.getReader();
+  const dec = new TextDecoder();
+  let buffer = "";
+  let quante = 0;
+  const visti = new Set();
+
+  const leggiRiga = (riga) => {
+    const t = riga.trim().replace(/^[`,\[\]]+|[`,\[\]]+$/g, "");
+    if (!t.startsWith("{")) return;
+    try {
+      const ric = JSON.parse(t);
+      const chiave = ric?.titolo?.toLowerCase();
+      if (!chiave || visti.has(chiave)) return;
+      visti.add(chiave);
+      quante++;
+      onRicetta(ric);
+    } catch {
+      // riga incompleta o rotta: la salto
+    }
+  };
+
+  for (;;) {
+    let pezzo;
+    try {
+      pezzo = await lettore.read();
+    } catch {
+      break; // connessione interrotta: tengo quelle arrivate
+    }
+    if (pezzo.done) break;
+    buffer += dec.decode(pezzo.value, { stream: true });
+    const righe = buffer.split("\n");
+    buffer = righe.pop();
+    righe.forEach(leggiRiga);
+  }
+  leggiRiga(buffer);
+  return quante;
+}
+
 /** Piccola memoria sul telefono (non condivisa): se non va, pazienza. */
 export const ricordaLocale = {
   leggi(chiave, def) {

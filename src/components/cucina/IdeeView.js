@@ -5,7 +5,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import {
   basi,
-  chiediCucina,
+  proposteAFlusso,
   diStagione,
   fmtCosto,
   fmtMinuti,
@@ -70,25 +70,40 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
   const chiedi = async (altre = false) => {
     setCarico(true);
     setErrore("");
+    const giaViste = altre ? proposte : [];
+    let lista = [...giaViste];
+    if (!altre) setProposte([]);
+    let primaArrivata = false;
     try {
-      const j = await chiediCucina("proposte", {
-        filtri: {
-          ...filtri,
-          basi: basi.filter((b) => filtri.basi.includes(b.id)).map((b) => b.label + (b.nota ? ` (${b.nota})` : "")),
-          testo: filtri.testo.trim(),
-          quante: 20
+      const quante = await proposteAFlusso(
+        {
+          filtri: {
+            ...filtri,
+            basi: basi.filter((b) => filtri.basi.includes(b.id)).map((b) => b.label + (b.nota ? ` (${b.nota})` : "")),
+            testo: filtri.testo.trim(),
+            quante: 20
+          },
+          dispensa,
+          gusti: riassuntoGusti(ricette),
+          evita: giaViste.map((p) => p.titolo)
         },
-        dispensa,
-        gusti: riassuntoGusti(ricette),
-        evita: altre ? proposte.map((p) => p.titolo) : []
-      });
-      if (!j.proposte.length) throw new Error("Nessuna idea, riprova.");
-      setProposte(j.proposte);
-      ricordaLocale.scrivi("proposte", j.proposte);
-      setTimeout(() => document.getElementById("proposte")?.scrollIntoView({ behavior: "smooth" }), 50);
+        (ricetta) => {
+          if (lista.some((p) => p.titolo?.toLowerCase() === ricetta.titolo.toLowerCase())) return;
+          lista = [...lista, ricetta];
+          setProposte(lista);
+          if (!primaArrivata) {
+            primaArrivata = true;
+            if (!altre) {
+              setTimeout(() => document.getElementById("proposte")?.scrollIntoView({ behavior: "smooth" }), 50);
+            }
+          }
+        }
+      );
+      if (!quante) throw new Error("Nessuna idea questa volta, riprova.");
     } catch (e) {
       setErrore(e.message);
     } finally {
+      ricordaLocale.scrivi("proposte", lista);
       setCarico(false);
     }
   };
@@ -261,13 +276,15 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
           disabled={carico}
           className="btn-primario w-full text-lg shadow-lg shadow-black/50 disabled:opacity-70"
         >
-          {carico ? "Il cuoco scrive 20 ricette… 🤔" : "👨‍🍳 Proponimi 20 idee"}
+          {carico ? `Il cuoco scrive… ${proposte.length ? `(${proposte.length})` : "🤔"}` : "👨‍🍳 Proponimi 20 idee"}
         </button>
       </div>
 
       {proposte.length > 0 && (
         <div id="proposte" className="space-y-3 scroll-mt-20 pt-2">
-          <h2 className="text-lg font-bold px-1">Le proposte ({proposte.length})</h2>
+          <h2 className="text-lg font-bold px-1">
+            Le proposte ({proposte.length}){carico && <span className="text-sm font-normal text-slate-400 animate-pulse"> · ne arrivano altre…</span>}
+          </h2>
           {proposte.map((p, i) => (
             <SchedaProposta key={i + p.titolo} p={p} onScegli={() => onScegli(p, filtri)} />
           ))}
@@ -276,7 +293,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
             disabled={carico}
             className="w-full rounded-2xl border border-cyan-400/50 text-cyan-300 py-3 disabled:opacity-50"
           >
-            {carico ? "Ci penso… 🤔" : "🔄 Altre 20 idee"}
+            {carico ? `Arrivano… (${proposte.length})` : "🔄 Altre 20 idee"}
           </button>
         </div>
       )}

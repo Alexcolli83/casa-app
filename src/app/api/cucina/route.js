@@ -255,20 +255,10 @@ IN CASA C'È SEMPRE (dispensa base, usala liberamente): ${(b.dispensa || []).joi
 ${b.gusti ? `I NOSTRI GUSTI (ricette fatte di recente con voti e note dello chef: servono a capire cosa ci piace, NON sono richieste di oggi e non devono cambiare l'ingrediente principale):\n${b.gusti}` : ""}
 ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 
-Rispondi SOLO con JSON in questo formato:
-{"proposte":[{
- "titolo":"nome del piatto",
- "descrizione":"una frase che fa venire fame",
- "perche":"perché è adatta a quello che abbiamo chiesto",
- "ingredienti":[${n > 8 ? `"solo gli ingredienti principali, max 6, con quantità per ${persone}"` : `"ingrediente con quantità per ${persone}"`}],
- "daComprare":["solo ciò che probabilmente NON abbiamo in casa, vuoto se niente"],
- "passaggi":[${n > 8 ? '"3-4 passaggi brevissimi, una riga ciascuno"' : '"3-6 passaggi brevi"'}],
- "tempoMinuti":numero totale,
- "costoEuro":costo indicativo totale in euro,
- "padelle":numero di pentole/padelle sporcate,
- "stagionale":true/false,
- "difficolta":"facile|media|impegnativa"
-}]}`;
+FORMATO DELLA RISPOSTA (importantissimo):
+scrivi ${n} righe, UNA RICETTA PER RIGA, ognuna è un oggetto JSON completo su una sola riga.
+Niente altro testo, niente elenco tra parentesi quadre, niente \`\`\`. Esempio di una riga:
+{"titolo":"nome del piatto","descrizione":"una frase che fa venire fame","perche":"perché è adatta a quello che abbiamo chiesto","ingredienti":[${n > 8 ? `"solo i principali, max 6, con quantità per ${persone}"` : `"ingrediente con quantità per ${persone}"`}],"daComprare":["solo ciò che probabilmente NON abbiamo in casa, vuoto se niente"],"passaggi":[${n > 8 ? '"3-4 passaggi brevissimi, una riga ciascuno"' : '"3-6 passaggi brevi"'}],"tempoMinuti":30,"costoEuro":8,"padelle":1,"stagionale":true,"difficolta":"facile|media|impegnativa"}`;
 }
 
 function promptApprofondisci(b) {
@@ -301,14 +291,128 @@ Riscrivi tutto con parole tue. Rispondi SOLO con JSON:
 
 // ---------- le azioni ----------
 
+/** Legge le righe-ricetta (una ricetta JSON per riga). */
+function righeRicette(testo) {
+  return testo
+    .split("\n")
+    .map((r) => r.trim().replace(/^[`,\[\]]+|[`,\[\]]+$/g, ""))
+    .filter((r) => r.startsWith("{"))
+    .map((r) => {
+      try {
+        return JSON.parse(r);
+      } catch {
+        return null;
+      }
+    })
+    .filter((x) => x?.titolo);
+}
+
+const corpoProposte = (b) => ({
+  systemInstruction: { parts: [{ text: CHEF }] },
+  contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
+  generationConfig: { temperature: 1 }
+});
+
+// versione "tutto insieme" (di riserva)
 async function proposte(b, scadenza) {
-  const j = await gemini({
-    systemInstruction: { parts: [{ text: CHEF }] },
-    contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
-    generationConfig: { responseMimeType: "application/json", temperature: 1 }
-  }, VELOCI, scadenza, 45000); // tante ricette: il primo modello ha più tempo
-  const dati = leggiJSON(testoDi(j));
-  return { proposte: Array.isArray(dati.proposte) ? dati.proposte : [] };
+  const j = await gemini(corpoProposte(b), VELOCI, scadenza, 45000);
+  return { proposte: righeRicette(testoDi(j)) };
+}
+
+/**
+ * Versione "a flusso": le ricette arrivano una alla volta mentre Gemini le scrive.
+ * Al telefono mando il testo così com'è; è lui che taglia le righe.
+ */
+async function proposteFlusso(b, scadenza) {
+  const corpo = corpoProposte(b);
+  let ultimo;
+  for (const m of VELOCI) {
+    if (scadenza - Date.now() < 5000) break;
+    for (let i = pensieroBuono[m] ?? 0; i < PENSIERO.length; i++) {
+      const gc = { ...corpo.generationConfig };
+      if (PENSIERO[i]) gc.thinkingConfig = PENSIERO[i];
+      const ctrl = new AbortController();
+      const attesa = setTimeout(() => ctrl.abort(), Math.min(20000, scadenza - Date.now()));
+      let r;
+      try {
+        r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${m}:streamGenerateContent?alt=sse`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": (process.env.GEMINI_API_KEY || "").trim()
+            },
+            body: JSON.stringify({ ...corpo, generationConfig: gc }),
+            signal: ctrl.signal
+          }
+        );
+      } catch (e) {
+        clearTimeout(attesa);
+        ultimo = new ErroreGemini(`${m} troppo lento`, 504);
+        console.warn("cucina flusso", m, e.name);
+        break; // provo il modello successivo
+      }
+      clearTimeout(attesa);
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        ultimo = new ErroreGemini(j.error?.message || "errore " + r.status, r.status);
+        console.warn("cucina flusso", m, r.status, String(ultimo.message).slice(0, 120));
+        if (r.status === 400 && /think/i.test(ultimo.message)) continue; // altra variante di "pensiero"
+        if ([404, 429, 500, 503].includes(r.status) || (r.status === 400 && /model/i.test(ultimo.message))) break;
+        throw ultimo;
+      }
+      pensieroBuono[m] = i;
+      return trasformaFlusso(r.body, scadenza);
+    }
+  }
+  throw ultimo || new ErroreGemini("tempo finito", 504);
+}
+
+/** Dal flusso SSE di Gemini tiro fuori solo il testo e lo giro al telefono. */
+function trasformaFlusso(sorgente, scadenza) {
+  const lettore = sorgente.getReader();
+  const dec = new TextDecoder();
+  const enc = new TextEncoder();
+  let resto = "";
+  return new ReadableStream({
+    async pull(ctrl) {
+      // continuo a leggere finché ho qualcosa da mandare (o è finito)
+      for (;;) {
+        if (Date.now() > scadenza) {
+          lettore.cancel().catch(() => {});
+          ctrl.close();
+          return;
+        }
+        const { value, done } = await lettore.read();
+        if (done) {
+          ctrl.close();
+          return;
+        }
+        resto += dec.decode(value, { stream: true });
+        const eventi = resto.split("\n");
+        resto = eventi.pop();
+        let mandato = false;
+        for (const ev of eventi) {
+          const riga = ev.trim();
+          if (!riga.startsWith("data:")) continue;
+          try {
+            const t = testoDi(JSON.parse(riga.slice(5)));
+            if (t) {
+              ctrl.enqueue(enc.encode(t));
+              mandato = true;
+            }
+          } catch {
+            // pezzo non leggibile: lo salto
+          }
+        }
+        if (mandato) return;
+      }
+    },
+    cancel() {
+      lettore.cancel().catch(() => {});
+    }
+  });
 }
 
 async function approfondisci(b, scadenza) {
@@ -355,7 +459,7 @@ async function chiedi(b, scadenza) {
   return { risposta: testoDi(j) || "Non ho capito, me la rifai?" };
 }
 
-const AZIONI = { proposte, approfondisci, chiedi };
+const AZIONI = { proposte, proposteFlusso, approfondisci, chiedi };
 
 // ---------- ingresso ----------
 
@@ -414,6 +518,12 @@ export async function POST(req) {
   if (!azione) return json({ errore: "Azione sconosciuta." }, 400);
 
   try {
+    if (b.azione === "proposteFlusso") {
+      const flusso = await proposteFlusso(b, scadenza);
+      return new Response(flusso, {
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-cache" }
+      });
+    }
     return json(await azione(b, scadenza));
   } catch (e) {
     console.error("cucina", b.azione, e?.status, e?.message);
