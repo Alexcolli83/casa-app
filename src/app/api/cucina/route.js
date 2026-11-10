@@ -253,11 +253,13 @@ ${regolaBase}
 
   return `Siamo a ${oggi()}. Proponi PIÙ IDEE POSSIBILI per la cena di stasera (almeno ${n}), senza doppioni.
 
-DOVE CERCARE: fai il GIRO D'ITALIA. Procedi regione per regione, in quest'ordine:
-${scalettaRegioni(b.ripartiDa).join(", ")}, e alla fine qualcosa di internazionale.
-Per OGNI regione scrivi 2-3 ricette tipiche o ispirate a quella cucina che rispettano le nostre richieste
-(anche tradizionali poco conosciute). Salta una regione solo se proprio non ha nulla di adatto.
-Arriva fino in fondo alla scaletta, fino alla Sardegna: è normale e voluto che i piatti siano tanti. Non fermarti a metà.
+DOVE CERCARE: fai il GIRO D'ITALIA, a giri ripetuti.
+Un GIRO = 1 piatto per ogni regione, in quest'ordine: ${scalettaRegioni(b.ripartiDa).join(", ")};
+poi 5 piatti internazionali (Paesi diversi). Totale 25 piatti per giro.
+Finito un giro, RICOMINCIA un nuovo giro nello stesso ordine con piatti DIVERSI da quelli già scritti,
+e continua così, giro dopo giro, fino a 100 piatti in tutto.
+Ogni piatto deve rispettare le nostre richieste (anche ricette tradizionali poco conosciute);
+salta una regione solo se proprio non ha nulla di adatto. Non fermarti: è normale e voluto che i piatti siano tanti.
 
 ${cosa}
 
@@ -274,8 +276,8 @@ ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 
 FORMATO DELLA RISPOSTA (importantissimo), in DUE PARTI:
 
-PARTE 1 – INDICE. Scrivi prima la riga "INDICE:" e poi ${Math.max(n, 40)} righe cortissime numerate, una per piatto,
-seguendo la scaletta delle regioni: "1. Nome del piatto – Regione". Solo titolo e regione, niente altro.
+PARTE 1 – INDICE. Scrivi prima la riga "INDICE:" e poi 100 righe cortissime numerate (4 giri da 25), una per piatto,
+seguendo i giri: "1. Nome del piatto – Regione". Solo titolo e regione, niente altro.
 
 PARTE 2 – SCHEDE. Poi scrivi la riga "SCHEDE:" e, NELLO STESSO ORDINE DELL'INDICE, una scheda per OGNI piatto dell'indice,
 senza saltarne nessuno: devi arrivare all'ultimo numero dell'indice.
@@ -336,7 +338,7 @@ function righeRicette(testo) {
 const corpoProposte = (b) => ({
   systemInstruction: { parts: [{ text: CHEF }] },
   contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
-  generationConfig: { temperature: 0.9, maxOutputTokens: 32000 }
+  generationConfig: { temperature: 0.9, maxOutputTokens: 60000 }
 });
 
 // versione "tutto insieme" (di riserva)
@@ -415,7 +417,7 @@ const MAX_GIRI = 1; // una ricerca = UNA richiesta a Gemini (i rilanci li fa Bob
  */
 async function proposteFlusso(b, scadenza) {
   const f = b.filtri || {};
-  const obiettivo = Math.min(Number(f.quante) || 50, 60);
+  const obiettivo = Math.min(Number(f.quante) || 100, 100);
   const evitaBase = b.evita || [];
   const corpoGiro = (fatte, titoli) => {
     const bb = { ...b, filtri: { ...f, quante: Math.max(5, obiettivo - fatte) }, evita: [...evitaBase, ...titoli] };
