@@ -12,7 +12,21 @@
 //   { azione: "spesa", id }          ho appena aggiunto una spesa: avviso l'altro
 
 import { allowedUsers, catInfo, euro, nomeUtente } from "@/lib/casa";
-import { adminAuth, adminDb, configOk, giornoDopo, mandaA, oraRoma } from "@/lib/notificheServer";
+
+// Le librerie del server (firebase-admin, web-push) le carico "al volo" dentro un try:
+// se qualcosa si rompe, l'errore arriva scritto all'app invece di una pagina vuota.
+let lib = null;
+async function carica() {
+  if (!lib) lib = await import("@/lib/notificheServer");
+  return lib;
+}
+const configOk = () => {
+  const manca = [];
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT) manca.push("FIREBASE_SERVICE_ACCOUNT");
+  if (!process.env.VAPID_PRIVATE_KEY) manca.push("VAPID_PRIVATE_KEY");
+  return manca;
+};
+const spiega = (e) => String(e?.message || e).slice(0, 220);
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +52,17 @@ export async function GET(req) {
   }
 
   const url = new URL(req.url);
-  return json(await promemoria(url.searchParams.get("tipo"), Number(url.searchParams.get("ora")), false));
+  try {
+    return json(await promemoria(url.searchParams.get("tipo"), Number(url.searchParams.get("ora")), false));
+  } catch (e) {
+    console.error("promemoria", e);
+    return json({ errore: "Errore promemoria: " + spiega(e) }, 500);
+  }
 }
 
 /** Prepara e manda il promemoria. Con "forza" ignora ora e "già mandato" (per la prova dall'app). */
 async function promemoria(tipo, oraVoluta, forza, soloA) {
+  const { adminDb, giornoDopo, mandaA, oraRoma } = await carica();
   const { giorno, ora } = oraRoma();
   if (!forza && ora !== oraVoluta) return { saltato: `in Italia sono le ${ora}, non le ${oraVoluta}` };
 
@@ -88,12 +108,27 @@ export async function POST(req) {
   const manca = configOk();
   if (manca.length) return json({ errore: "Mancano su Vercel: " + manca.join(", ") }, 500);
 
+  let L;
+  try {
+    L = await carica();
+  } catch (e) {
+    console.error("caricamento librerie", e);
+    return json({ errore: "Il server non riesce a caricare le librerie: " + spiega(e) }, 500);
+  }
+  const { adminAuth, adminDb, mandaA } = L;
+
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  let auth;
+  try {
+    auth = adminAuth(); // qui si legge la chiave di servizio
+  } catch (e) {
+    return json({ errore: "Chiave FIREBASE_SERVICE_ACCOUNT non valida: " + spiega(e) }, 500);
+  }
   let email = null;
   try {
-    email = (await adminAuth().verifyIdToken(token)).email;
-  } catch {
-    // token non valido
+    email = (await auth.verifyIdToken(token)).email;
+  } catch (e) {
+    console.warn("token", spiega(e));
   }
   if (!email || !allowedUsers.includes(email)) return json({ errore: "Non autorizzato." }, 401);
 
@@ -151,6 +186,6 @@ export async function POST(req) {
     return json({ errore: "Azione sconosciuta." }, 400);
   } catch (e) {
     console.error("notifiche", b.azione, e);
-    return json({ errore: "Errore: " + String(e?.message || e).slice(0, 140) }, 500);
+    return json({ errore: "Errore: " + spiega(e) }, 500);
   }
 }
