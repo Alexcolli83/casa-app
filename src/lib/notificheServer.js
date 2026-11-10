@@ -47,7 +47,7 @@ function sistemaChiave(k) {
   t = t.replace(/\\\\n/g, "\n").replace(/\\n/g, "\n").replace(/\r/g, "");
   if (valida(t)) return t;
   const m = t.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
-  if (!m) return t;
+  if (!m) return senzaIntestazione(t);
   const tipo = m[1];
   const corpo = m[2].replace(/[^A-Za-z0-9+/=]/g, "");
 
@@ -68,6 +68,23 @@ function sistemaChiave(k) {
   if (valida(k2)) return k2;
 
   return k1;
+}
+
+/**
+ * Le scritte "BEGIN/END PRIVATE KEY" sono sparite o cambiate (es. pagina tradotta in automatico):
+ * tengo solo le righe che sono chiave vera (caratteri base64) e rimetto io le intestazioni giuste.
+ */
+function senzaIntestazione(t) {
+  const righe = t
+    .split("\n")
+    .map((r) => r.trim())
+    .filter((r) => r.length >= 4 && /^[A-Za-z0-9+/=]+$/.test(r));
+  const corpo = righe.join("");
+  for (const tipo of ["PRIVATE KEY", "RSA PRIVATE KEY"]) {
+    const k = pem(tipo, corpo);
+    if (valida(k)) return k;
+  }
+  return t;
 }
 
 /** Descrive la forma della chiave (senza mostrarla) per capire cosa non va. */
