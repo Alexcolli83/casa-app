@@ -5,7 +5,10 @@ import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 import {
   basi,
+  leggiRicerche,
   proposteAFlusso,
+  salvaRicerca,
+  sintesiRicerca,
   diStagione,
   fmtCosto,
   fmtMinuti,
@@ -76,6 +79,16 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
     let lista = [...giaViste];
     if (!altre) setProposte([]);
     let primaArrivata = false;
+    // titoli già usciti in ricerche passate (per la regola del 25%): solo per le ricerche nuove
+    let titoliPassati = [];
+    if (!altre) {
+      try {
+        const vecchie = await leggiRicerche(20);
+        titoliPassati = [...new Set(vecchie.flatMap((r) => (r.proposte || []).map((p) => p.titolo)).filter(Boolean))].slice(0, 200);
+      } catch {
+        // storico non leggibile: pazienza
+      }
+    }
     try {
       const esito = await proposteAFlusso(
         {
@@ -88,7 +101,8 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
           dispensa,
           gusti: riassuntoGusti(ricette),
           evita: giaViste.map((p) => p.titolo),
-          ripartiDa: altre ? giaViste[giaViste.length - 1]?.origine || "" : ""
+          ripartiDa: altre ? giaViste[giaViste.length - 1]?.origine || "" : "",
+          giaViste: titoliPassati
         },
         (ricetta) => {
           if (lista.some((p) => p.titolo?.toLowerCase() === ricetta.titolo.toLowerCase())) return;
@@ -109,6 +123,9 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
     } finally {
       ricordaLocale.scrivi("proposte", lista);
       setCarico(false);
+      // salvo nello storico solo le ricette nuove di questa ricerca
+      const nuove = lista.slice(giaViste.length);
+      salvaRicerca(sintesiRicerca(filtri, basi), filtri, nuove).catch(() => {});
     }
   };
 
@@ -348,7 +365,7 @@ function Riga({ etichetta, children }) {
   );
 }
 
-function SchedaProposta({ p, onScegli }) {
+export function SchedaProposta({ p, onScegli }) {
   const [aperta, setAperta] = useState(false);
   return (
     <div className="card space-y-3">

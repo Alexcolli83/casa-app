@@ -7,6 +7,7 @@ import { dataDoc, dispensaIniziale } from "@/lib/cucina";
 import CeneView from "@/components/CeneView";
 import IdeeView from "./IdeeView";
 import RicettarioView from "./RicettarioView";
+import GiaCercateView from "./GiaCercateView";
 import RicettaView from "./RicettaView";
 
 /**
@@ -21,6 +22,7 @@ import RicettaView from "./RicettaView";
 const viste = [
   { id: "settimana", label: "Settimana" },
   { id: "idee", label: "Idee" },
+  { id: "cercate", label: "Già cercate" },
   { id: "ricettario", label: "Ricettario" }
 ];
 
@@ -60,12 +62,12 @@ export default function CucinaView() {
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-[#121824] border border-slate-800/80 mb-4">
+      <div className="grid grid-cols-4 gap-1 p-1 rounded-2xl bg-[#121824] border border-slate-800/80 mb-4">
         {viste.map((v) => (
           <button
             key={v.id}
             onClick={() => setVista(v.id)}
-            className={`rounded-xl py-2 text-sm transition ${
+            className={`rounded-xl py-2 text-[13px] leading-tight transition ${
               vista === v.id ? "bg-cyan-400 text-black font-semibold" : "text-slate-400"
             }`}
           >
@@ -82,6 +84,8 @@ export default function CucinaView() {
           dispensa={dispensa || dispensaIniziale}
           onScegli={(proposta, filtri) => setAperta({ proposta, salvata: null, filtri })}
         />
+      ) : vista === "cercate" ? (
+        <GiaCercateView onScegli={(proposta) => setAperta({ proposta, salvata: null, filtri: null })} />
       ) : (
         <RicettarioView ricette={ricette} onApri={(r) => setAperta({ proposta: r.proposta || r, salvata: r })} />
       )}

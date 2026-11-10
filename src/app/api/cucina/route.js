@@ -273,6 +273,8 @@ IN CASA C'È SEMPRE (dispensa base, usala liberamente): ${(b.dispensa || []).joi
 
 ${b.gusti ? `I NOSTRI GUSTI (ricette fatte di recente con voti e note dello chef: servono a capire cosa ci piace, NON sono richieste di oggi e non devono cambiare l'ingrediente principale):\n${b.gusti}` : ""}
 ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
+${b.giaViste?.length ? `GIÀ VISTE IN RICERCHE PASSATE: ${b.giaViste.slice(0, 200).join("; ")}.
+Di queste puoi riproporne AL MASSIMO 1 su 4 (25%): almeno 3 piatti su 4 devono essere nuovi.` : ""}
 
 FORMATO DELLA RISPOSTA (importantissimo), in DUE PARTI:
 

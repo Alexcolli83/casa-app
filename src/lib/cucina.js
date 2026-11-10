@@ -1,6 +1,7 @@
 // Costanti e piccoli aiuti della sezione Cucina.
 
-import { auth } from "@/firebase";
+import { auth, db } from "@/firebase";
+import { addDoc, collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 
 /** Passo 1: la base del piatto. Carne e pesce aprono la scelta dei tipi. */
 export const basi = [
@@ -266,6 +267,41 @@ export async function proposteAFlusso(dati, onRicetta) {
   }
   leggiRiga(buffer);
   return { quante, fine: fine || "INTERROTTO", nota, info };
+}
+
+/**
+ * Storico delle ricerche (Firestore "ricerche"): un documento per ricerca con le proposte arrivate.
+ * Salva solo il riassunto (non la preparazione completa).
+ */
+export async function salvaRicerca(sintesi, filtri, proposte) {
+  if (!proposte.length) return;
+  const pulite = JSON.parse(JSON.stringify(proposte));
+  await addDoc(collection(db, "ricerche"), {
+    data: new Date(),
+    user: auth.currentUser?.email || "",
+    sintesi,
+    filtri: JSON.parse(JSON.stringify(filtri || {})),
+    quante: pulite.length,
+    proposte: pulite
+  });
+}
+
+/** Le ultime ricerche salvate (le più recenti per prime). */
+export async function leggiRicerche(quante = 100) {
+  const snap = await getDocs(query(collection(db, "ricerche"), orderBy("data", "desc"), limit(quante)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/** Una frase che riassume cosa avevamo chiesto, per lo storico. */
+export function sintesiRicerca(f, basi) {
+  const pezzi = [
+    f.testo?.trim(),
+    basi.filter((b) => (f.basi || []).includes(b.id)).map((b) => b.label).join(", "),
+    (f.tipi || []).join(", "),
+    (f.verdure || []).join(", "),
+    (f.umori || []).join(", ")
+  ].filter(Boolean);
+  return pezzi.join(" · ") || "Ricerca libera";
 }
 
 /** Piccola memoria sul telefono (non condivisa): se non va, pazienza. */
