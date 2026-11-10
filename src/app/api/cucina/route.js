@@ -38,7 +38,7 @@ const BRAVI = [
 ].filter((m, i, a) => m && a.indexOf(m) === i);
 
 const MAX_TENTATIVO = 25000; // un singolo modello non può tenerci appesi più di 25 secondi
-const BUDGET = 50000; // tempo totale per richiesta (Vercel taglia a 60)
+const BUDGET = 55000; // tempo totale per richiesta (Vercel taglia a 60)
 
 // ---------- controllo di chi chiama ----------
 
@@ -109,14 +109,14 @@ async function chiamaModello(modello, corpo, ms = MAX_TENTATIVO) {
 const PENSIERO = [{ thinkingLevel: "minimal" }, { thinkingLevel: "low" }, { thinkingBudget: 0 }, null];
 const pensieroBuono = {}; // modello -> indice in PENSIERO che ha funzionato
 
-async function chiamaVeloce(modello, corpo, scadenza = Date.now() + MAX_TENTATIVO) {
+async function chiamaVeloce(modello, corpo, scadenza = Date.now() + MAX_TENTATIVO, maxMs = MAX_TENTATIVO) {
   const inizio = pensieroBuono[modello] ?? 0;
   let ultimo;
   for (let i = inizio; i < PENSIERO.length; i++) {
     const gc = { ...(corpo.generationConfig || {}) };
     if (PENSIERO[i]) gc.thinkingConfig = PENSIERO[i];
     try {
-      const ms = Math.min(MAX_TENTATIVO, scadenza - Date.now());
+      const ms = Math.min(maxMs, scadenza - Date.now());
       const j = await chiamaModello(modello, { ...corpo, generationConfig: gc }, ms);
       pensieroBuono[modello] = i;
       return j;
@@ -131,12 +131,12 @@ async function chiamaVeloce(modello, corpo, scadenza = Date.now() + MAX_TENTATIV
 }
 
 /** Prova i modelli in ordine finché uno risponde, senza superare la scadenza. */
-async function gemini(corpo, modelli, scadenza) {
+async function gemini(corpo, modelli, scadenza, maxMs = MAX_TENTATIVO) {
   let ultimo;
   for (const m of modelli) {
     if (scadenza - Date.now() < 3000) break;
     try {
-      return await chiamaVeloce(m, corpo, scadenza);
+      return await chiamaVeloce(m, corpo, scadenza, maxMs);
     } catch (e) {
       ultimo = e;
       console.warn("cucina modello", m, e.status, String(e.message).slice(0, 120));
@@ -260,9 +260,9 @@ Rispondi SOLO con JSON in questo formato:
  "titolo":"nome del piatto",
  "descrizione":"una frase che fa venire fame",
  "perche":"perché è adatta a quello che abbiamo chiesto",
- "ingredienti":["ingrediente con quantità per ${persone}"],
+ "ingredienti":[${n > 8 ? `"solo gli ingredienti principali, max 6, con quantità per ${persone}"` : `"ingrediente con quantità per ${persone}"`}],
  "daComprare":["solo ciò che probabilmente NON abbiamo in casa, vuoto se niente"],
- "passaggi":["3-6 passaggi brevi"],
+ "passaggi":[${n > 8 ? '"3-4 passaggi brevissimi, una riga ciascuno"' : '"3-6 passaggi brevi"'}],
  "tempoMinuti":numero totale,
  "costoEuro":costo indicativo totale in euro,
  "padelle":numero di pentole/padelle sporcate,
@@ -306,7 +306,7 @@ async function proposte(b, scadenza) {
     systemInstruction: { parts: [{ text: CHEF }] },
     contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
     generationConfig: { responseMimeType: "application/json", temperature: 1 }
-  }, VELOCI, scadenza);
+  }, VELOCI, scadenza, 45000); // tante ricette: il primo modello ha più tempo
   const dati = leggiJSON(testoDi(j));
   return { proposte: Array.isArray(dati.proposte) ? dati.proposte : [] };
 }
