@@ -305,7 +305,7 @@ function righeRicette(testo) {
 const corpoProposte = (b) => ({
   systemInstruction: { parts: [{ text: CHEF }] },
   contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
-  generationConfig: { temperature: 1 }
+  generationConfig: { temperature: 1, maxOutputTokens: 32000 }
 });
 
 // versione "tutto insieme" (di riserva)
@@ -370,18 +370,23 @@ function trasformaFlusso(sorgente, scadenza) {
   const dec = new TextDecoder();
   const enc = new TextEncoder();
   let resto = "";
+  let motivo = "";
+  const chiudi = (ctrl, perche) => {
+    ctrl.enqueue(enc.encode(`\n{"_fine":"${perche || motivo || "STOP"}"}\n`));
+    ctrl.close();
+  };
   return new ReadableStream({
     async pull(ctrl) {
       // continuo a leggere finché ho qualcosa da mandare (o è finito)
       for (;;) {
         if (Date.now() > scadenza) {
           lettore.cancel().catch(() => {});
-          ctrl.close();
+          chiudi(ctrl, "TEMPO");
           return;
         }
         const { value, done } = await lettore.read();
         if (done) {
-          ctrl.close();
+          chiudi(ctrl);
           return;
         }
         resto += dec.decode(value, { stream: true });
@@ -392,7 +397,9 @@ function trasformaFlusso(sorgente, scadenza) {
           const riga = ev.trim();
           if (!riga.startsWith("data:")) continue;
           try {
-            const t = testoDi(JSON.parse(riga.slice(5)));
+            const j = JSON.parse(riga.slice(5));
+            if (j.candidates?.[0]?.finishReason) motivo = j.candidates[0].finishReason;
+            const t = testoDi(j);
             if (t) {
               ctrl.enqueue(enc.encode(t));
               mandato = true;

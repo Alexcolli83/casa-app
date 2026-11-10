@@ -191,7 +191,7 @@ export async function chiediCucina(azione, dati) {
 
 /**
  * Chiede le proposte "a flusso": ogni ricetta, appena scritta, viene passata a onRicetta.
- * Ritorna quante ne sono arrivate.
+ * Ritorna quante ne sono arrivate e perché si è fermato.
  */
 export async function proposteAFlusso(dati, onRicetta) {
   const u = auth.currentUser;
@@ -219,6 +219,7 @@ export async function proposteAFlusso(dati, onRicetta) {
   const dec = new TextDecoder();
   let buffer = "";
   let quante = 0;
+  let fine = "";
   const visti = new Set();
 
   const leggiRiga = (riga) => {
@@ -226,6 +227,10 @@ export async function proposteAFlusso(dati, onRicetta) {
     if (!t.startsWith("{")) return;
     try {
       const ric = JSON.parse(t);
+      if (ric?._fine) {
+        fine = ric._fine;
+        return;
+      }
       const chiave = ric?.titolo?.toLowerCase();
       if (!chiave || visti.has(chiave)) return;
       visti.add(chiave);
@@ -250,7 +255,7 @@ export async function proposteAFlusso(dati, onRicetta) {
     righe.forEach(leggiRiga);
   }
   leggiRiga(buffer);
-  return quante;
+  return { quante, fine: fine || "INTERROTTO" };
 }
 
 /** Piccola memoria sul telefono (non condivisa): se non va, pazienza. */

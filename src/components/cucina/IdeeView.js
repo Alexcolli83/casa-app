@@ -51,6 +51,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
   const [carico, setCarico] = useState(false);
   const [errore, setErrore] = useState("");
   const [dispensaAperta, setDispensaAperta] = useState(false);
+  const [fine, setFine] = useState("");
 
   const aggiorna = (cambio) => {
     const f = { ...filtri, ...cambio };
@@ -70,12 +71,13 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
   const chiedi = async (altre = false) => {
     setCarico(true);
     setErrore("");
+    setFine("");
     const giaViste = altre ? proposte : [];
     let lista = [...giaViste];
     if (!altre) setProposte([]);
     let primaArrivata = false;
     try {
-      const quante = await proposteAFlusso(
+      const esito = await proposteAFlusso(
         {
           filtri: {
             ...filtri,
@@ -99,7 +101,8 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
           }
         }
       );
-      if (!quante) throw new Error("Nessuna idea questa volta, riprova.");
+      if (!esito.quante) throw new Error("Nessuna idea questa volta, riprova.");
+      setFine(esito.fine);
     } catch (e) {
       setErrore(e.message);
     } finally {
@@ -288,6 +291,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
           {proposte.map((p, i) => (
             <SchedaProposta key={i + p.titolo} p={p} onScegli={() => onScegli(p, filtri)} />
           ))}
+          {!carico && fine && <MotivoFine fine={fine} quante={proposte.length} />}
           <button
             onClick={() => chiedi(true)}
             disabled={carico}
@@ -299,6 +303,16 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
       )}
     </div>
   );
+}
+
+function MotivoFine({ fine }) {
+  const testi = {
+    STOP: "Il cuoco ha finito le idee per questa richiesta. Con \"Altre idee\" ne cerca di nuove.",
+    TEMPO: "Tempo scaduto (Vercel chiude dopo un minuto): queste sono quelle arrivate in tempo.",
+    MAX_TOKENS: "Risposta troppo lunga, tagliata qui.",
+    INTERROTTO: "Connessione interrotta: tengo quelle arrivate."
+  };
+  return <p className="text-xs text-slate-500 text-center px-4">{testi[fine] || "Si è fermato (" + fine + ")."}</p>;
 }
 
 function Passo({ n, titolo, aiuto, evidenzia, sbiadito, children }) {
