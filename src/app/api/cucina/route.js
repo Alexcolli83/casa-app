@@ -21,21 +21,10 @@ const FIREBASE_API_KEY = "AIzaSyARqITBypOyeTeKsXhPCEggUyqNrCCN--s";
 // Modelli in ordine di prova. Se uno è intasato, lento o senza quota, si passa al successivo.
 // VELOCI: per proposte e chat (risposta in pochi secondi).
 // BRAVI: per la ricetta completa con ricerca sul web (più raffinati, ma a volte intasati).
-const VELOCI = [
-  "gemini-flash-lite-latest",
-  "gemini-3.5-flash-lite",
-  process.env.GEMINI_MODEL,
-  "gemini-3.8-flash",
-  "gemini-flash-latest"
-].filter((m, i, a) => m && a.indexOf(m) === i);
-
-const BRAVI = [
-  process.env.GEMINI_MODEL,
-  "gemini-3.8-flash",
-  "gemini-flash-latest",
-  "gemini-flash-lite-latest",
-  "gemini-3.5-flash-lite"
-].filter((m, i, a) => m && a.indexOf(m) === i);
+// Un solo nome per modello: "flash-lite-latest" e "3.5-flash-lite" sono lo STESSO modello
+// (stessa quota), riprovarli entrambi sprecava richieste.
+const VELOCI = ["gemini-flash-lite-latest", process.env.GEMINI_MODEL || "gemini-3.8-flash"];
+const BRAVI = [process.env.GEMINI_MODEL || "gemini-3.8-flash", "gemini-flash-lite-latest"];
 
 const MAX_TENTATIVO = 25000; // un singolo modello non può tenerci appesi più di 25 secondi
 const BUDGET = 55000; // tempo totale per richiesta (Vercel taglia a 60)
@@ -69,9 +58,15 @@ async function emailDaToken(token) {
 // ---------- Gemini ----------
 
 class ErroreGemini extends Error {
-  constructor(msg, status) {
+  constructor(msg, status, dettagli) {
     super(msg);
     this.status = status;
+    // per i 429: capisco se è il limite al minuto o al giorno, e tra quanto riprovare
+    const det = dettagli || [];
+    const quote = det.flatMap((d) => d.violations || []).map((v) => v.quotaId || "").join(" ");
+    this.alGiorno = /PerDay/i.test(quote);
+    const attesa = det.find((d) => d.retryDelay)?.retryDelay;
+    this.riprovaTra = attesa ? Math.ceil(parseFloat(attesa)) : null;
   }
 }
 
@@ -94,7 +89,7 @@ async function chiamaModello(modello, corpo, ms = MAX_TENTATIVO) {
       }
     );
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new ErroreGemini(j.error?.message || "errore " + r.status, r.status);
+    if (!r.ok) throw new ErroreGemini(j.error?.message || "errore " + r.status, r.status, j.error?.details);
     return j;
   } catch (e) {
     if (e.name === "AbortError") throw new ErroreGemini(`${modello} troppo lento`, 504);
@@ -356,7 +351,7 @@ async function proposteFlusso(b, scadenza) {
       clearTimeout(attesa);
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        ultimo = new ErroreGemini(j.error?.message || "errore " + r.status, r.status);
+        ultimo = new ErroreGemini(j.error?.message || "errore " + r.status, r.status, j.error?.details);
         console.warn("cucina flusso", m, r.status, String(ultimo.message).slice(0, 120));
         if (r.status === 400 && /think/i.test(ultimo.message)) continue; // altra variante di "pensiero"
         if ([404, 429, 500, 503].includes(r.status) || (r.status === 400 && /model/i.test(ultimo.message))) break;
@@ -531,7 +526,10 @@ export async function POST(req) {
       return json({ errore: "Google oggi è lento o intasato: riprova tra qualche minuto." }, 504);
     }
     if (e?.status === 429) {
-      return json({ errore: "Per oggi Gemini ha finito le risposte gratis. Riprova più tardi o domani." }, 429);
+      const msg = e.alGiorno
+        ? "Per oggi Gemini ha finito le risposte gratis: si riparte domattina alle 9."
+        : `Troppe richieste ravvicinate: aspetta ${e.riprovaTra ? e.riprovaTra + " secondi" : "un minuto"} e riprova.`;
+      return json({ errore: msg }, 429);
     }
     if (e?.status === 401 || e?.status === 403) {
       return json({ errore: "La chiave Gemini non viene accettata. Controllala su Vercel." }, 502);

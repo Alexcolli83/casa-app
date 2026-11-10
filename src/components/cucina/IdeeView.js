@@ -81,7 +81,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
             ...filtri,
             basi: basi.filter((b) => filtri.basi.includes(b.id)).map((b) => b.label + (b.nota ? ` (${b.nota})` : "")),
             testo: filtri.testo.trim(),
-            quante: 20
+            quante: 50
           },
           dispensa,
           gusti: riassuntoGusti(ricette),
@@ -276,7 +276,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
           disabled={carico}
           className="btn-primario w-full text-lg shadow-lg shadow-black/50 disabled:opacity-70"
         >
-          {carico ? `Il cuoco scrive… ${proposte.length ? `(${proposte.length})` : "🤔"}` : "👨‍🍳 Proponimi 20 idee"}
+          {carico ? `Il cuoco scrive… ${proposte.length ? `(${proposte.length})` : "🤔"}` : "👨‍🍳 Proponimi fino a 50 idee"}
         </button>
       </div>
 
@@ -293,7 +293,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
             disabled={carico}
             className="w-full rounded-2xl border border-cyan-400/50 text-cyan-300 py-3 disabled:opacity-50"
           >
-            {carico ? `Arrivano… (${proposte.length})` : "🔄 Altre 20 idee"}
+            {carico ? `Arrivano… (${proposte.length})` : "🔄 Altre idee"}
           </button>
         </div>
       )}
