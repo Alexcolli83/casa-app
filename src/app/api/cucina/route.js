@@ -26,6 +26,12 @@ const FIREBASE_API_KEY = "AIzaSyARqITBypOyeTeKsXhPCEggUyqNrCCN--s";
 const VELOCI = ["gemini-flash-lite-latest", process.env.GEMINI_MODEL || "gemini-3.8-flash"];
 const BRAVI = [process.env.GEMINI_MODEL || "gemini-3.8-flash", "gemini-flash-lite-latest"];
 
+const REGIONI = [
+  "Valle d'Aosta", "Piemonte", "Liguria", "Lombardia", "Trentino-Alto Adige", "Veneto",
+  "Friuli-Venezia Giulia", "Emilia-Romagna", "Toscana", "Umbria", "Marche", "Lazio", "Abruzzo",
+  "Molise", "Campania", "Puglia", "Basilicata", "Calabria", "Sicilia", "Sardegna"
+];
+
 const MAX_TENTATIVO = 25000; // un singolo modello non può tenerci appesi più di 25 secondi
 const BUDGET = 55000; // tempo totale per richiesta (Vercel taglia a 60)
 
@@ -237,9 +243,11 @@ ${regolaBase}
 
   return `Siamo a ${oggi()}. Proponi esattamente ${n} idee per la cena di stasera, senza doppioni.
 
-DOVE CERCARE: pesca da TUTTA la cucina italiana, regione per regione (dal Piemonte alla Sicilia, isole comprese),
-comprese ricette tradizionali meno conosciute, e solo ogni tanto qualcosa di internazionale.
-Varia le regioni di provenienza tra le proposte. Scrivi tutte le ${n} righe: non fermarti prima.
+DOVE CERCARE: fai il GIRO D'ITALIA. Procedi regione per regione, in quest'ordine:
+${REGIONI.join(", ")}, e alla fine qualcosa di internazionale.
+Per OGNI regione scrivi 2-3 ricette tipiche o ispirate a quella cucina che rispettano le nostre richieste
+(anche tradizionali poco conosciute). Salta una regione solo se proprio non ha nulla di adatto.
+Arriva fino in fondo alla scaletta: è normale che le righe siano tante (${n} o più).
 
 ${cosa}
 
@@ -379,7 +387,7 @@ const titoloDiRiga = (riga) => {
   }
 };
 
-const MAX_GIRI = 4; // al massimo 4 richieste a Gemini per una ricerca
+const MAX_GIRI = 1; // una ricerca = UNA richiesta a Gemini (i rilanci li fa Bobby con "Altre idee")
 
 /**
  * Proposte "a flusso" con rilanci: le ricette arrivano una alla volta.
