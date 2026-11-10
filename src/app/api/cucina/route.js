@@ -118,8 +118,8 @@ async function gemini(corpo) {
       ultimo = e;
       // modello inesistente o non disponibile: passo al prossimo
       if (e.status === 404 || (e.status === 400 && /model/i.test(e.message))) continue;
-      // quota finita su questo modello: provo il prossimo
-      if (e.status === 429) continue;
+      // quota finita o modello intasato: provo il prossimo
+      if (e.status === 429 || e.status === 503 || e.status === 500) continue;
       throw e;
     }
   }
