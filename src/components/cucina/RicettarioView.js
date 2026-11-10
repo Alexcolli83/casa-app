@@ -25,7 +25,7 @@ export default function RicettarioView({ ricette, onApri }) {
     const q = cerca.trim().toLowerCase();
     return ricette.filter((r) => {
       if (q) {
-        const testo = [r.titolo, r.descrizione, ...(r.umori || []), ...(r.tag || []), ...(r.note || []).map((n) => n.testo)]
+        const testo = [r.titolo, r.descrizione, r.proposta?.origine, r.proposta?.tipologia, ...(r.umori || []), ...(r.tag || []), ...(r.note || []).map((n) => n.testo)]
           .join(" ")
           .toLowerCase();
         if (!testo.includes(q)) return false;
@@ -98,6 +98,7 @@ export default function RicettarioView({ ricette, onApri }) {
                   {st && <span>{st.emoji} {st.label}</span>}
                   {d && <span>📅 {fmtData.format(d)}</span>}
                   {r.volte > 1 && <span>🔁 {r.volte} volte</span>}
+                  {r.proposta?.origine && <span>📍 {r.proposta.origine}</span>}
                 </div>
                 {r.note?.length > 0 && (
                   <div className="text-xs text-slate-500 italic truncate">“{r.note[r.note.length - 1].testo}”</div>

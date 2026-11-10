@@ -152,6 +152,13 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
               </ol>
             </section>
 
+            {(r.origine || p.origine) && (
+              <section className="card text-sm">
+                <div className="titolo-card">📍 Da dove viene</div>
+                <p className="text-slate-300">{r.origine || [p.origine, p.tipologia].filter(Boolean).join(" · ")}</p>
+              </section>
+            )}
+
             <Elenco titolo="🔪 Trucchi del mestiere" voci={r.trucchi} />
             <Elenco titolo="⚠️ Errori da evitare" voci={r.errori} />
             <Elenco titolo="🔁 Varianti e sostituzioni" voci={r.varianti} />

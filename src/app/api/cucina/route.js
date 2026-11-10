@@ -237,6 +237,10 @@ ${regolaBase}
 
   return `Siamo a ${oggi()}. Proponi esattamente ${n} idee per la cena di stasera, senza doppioni.
 
+DOVE CERCARE: pesca da TUTTA la cucina italiana, regione per regione (dal Piemonte alla Sicilia, isole comprese),
+comprese ricette tradizionali meno conosciute, e solo ogni tanto qualcosa di internazionale.
+Varia le regioni di provenienza tra le proposte. Scrivi tutte le ${n} righe: non fermarti prima.
+
 ${cosa}
 
 SEMPRE:
@@ -253,7 +257,7 @@ ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 FORMATO DELLA RISPOSTA (importantissimo):
 scrivi ${n} righe, UNA RICETTA PER RIGA, ognuna è un oggetto JSON completo su una sola riga.
 Niente altro testo, niente elenco tra parentesi quadre, niente \`\`\`. Esempio di una riga:
-{"titolo":"nome del piatto","descrizione":"una frase che fa venire fame","perche":"perché è adatta a quello che abbiamo chiesto","ingredienti":[${n > 8 ? `"solo i principali, max 6, con quantità per ${persone}"` : `"ingrediente con quantità per ${persone}"`}],"daComprare":["solo ciò che probabilmente NON abbiamo in casa, vuoto se niente"],"passaggi":[${n > 8 ? '"3-4 passaggi brevissimi, una riga ciascuno"' : '"3-6 passaggi brevi"'}],"tempoMinuti":30,"costoEuro":8,"padelle":1,"stagionale":true,"difficolta":"facile|media|impegnativa"}`;
+{"titolo":"nome del piatto","descrizione":"una frase che fa venire fame","perche":"perché è adatta a quello che abbiamo chiesto","ingredienti":[${n > 8 ? `"solo i principali, max 6, con quantità per ${persone}"` : `"ingrediente con quantità per ${persone}"`}],"daComprare":["solo ciò che probabilmente NON abbiamo in casa, vuoto se niente"],"passaggi":[${n > 8 ? '"3-4 passaggi brevissimi, una riga ciascuno"' : '"3-6 passaggi brevi"'}],"tempoMinuti":30,"costoEuro":8,"padelle":1,"stagionale":true,"difficolta":"facile|media|impegnativa","origine":"regione di provenienza (es. Toscana, Sicilia) oppure 'internazionale: Paese'","tipologia":"che tipo di piatto è, es. piatto povero contadino, secondo di mare, cucina di montagna"}`;
 }
 
 function promptApprofondisci(b) {
@@ -276,7 +280,8 @@ Riscrivi tutto con parole tue. Rispondi SOLO con JSON:
  "trucchi":["trucchi del mestiere da chef"],
  "errori":["errori da evitare"],
  "varianti":["sostituzioni o varianti utili"],
- "abbinamento":"vino o bevanda consigliata",
+ "abbinamento":"vino o bevanda consigliata, possibilmente della stessa zona",
+ "origine":"da dove viene il piatto: regione, zona, e in 2-3 frasi la sua storia o curiosità",
  "tempoMinuti":numero totale,
  "costoEuro":numero,
  "padelle":numero,
@@ -318,8 +323,8 @@ async function proposte(b, scadenza) {
  * Versione "a flusso": le ricette arrivano una alla volta mentre Gemini le scrive.
  * Al telefono mando il testo così com'è; è lui che taglia le righe.
  */
-async function proposteFlusso(b, scadenza) {
-  const corpo = corpoProposte(b);
+/** Apre un flusso con il primo modello disponibile. Ritorna il body da leggere. */
+async function apriFlusso(corpo, scadenza) {
   let ultimo;
   for (const m of VELOCI) {
     if (scadenza - Date.now() < 5000) break;
@@ -358,63 +363,131 @@ async function proposteFlusso(b, scadenza) {
         throw ultimo;
       }
       pensieroBuono[m] = i;
-      return trasformaFlusso(r.body, scadenza);
+      return r.body;
     }
   }
   throw ultimo || new ErroreGemini("tempo finito", 504);
 }
 
-/** Dal flusso SSE di Gemini tiro fuori solo il testo e lo giro al telefono. */
-function trasformaFlusso(sorgente, scadenza) {
-  const lettore = sorgente.getReader();
-  const dec = new TextDecoder();
+const titoloDiRiga = (riga) => {
+  const t = riga.trim().replace(/^[`,\[\]]+|[`,\[\]]+$/g, "");
+  if (!t.startsWith("{")) return null;
+  try {
+    return JSON.parse(t).titolo?.toLowerCase() || null;
+  } catch {
+    return null;
+  }
+};
+
+const MAX_GIRI = 4; // al massimo 4 richieste a Gemini per una ricerca
+
+/**
+ * Proposte "a flusso" con rilanci: le ricette arrivano una alla volta.
+ * Se il cuoco si ferma prima del numero chiesto e c'è ancora tempo,
+ * gli chiedo altre ricette (senza ripetere quelle già date), nello stesso flusso.
+ * Il primo giro lo apro PRIMA di rispondere, così gli errori arrivano come JSON normale.
+ */
+async function proposteFlusso(b, scadenza) {
+  const f = b.filtri || {};
+  const obiettivo = Math.min(Number(f.quante) || 50, 60);
+  const evitaBase = b.evita || [];
+  const corpoGiro = (fatte, titoli) =>
+    corpoProposte({
+      ...b,
+      filtri: { ...f, quante: Math.max(5, obiettivo - fatte) },
+      evita: [...evitaBase, ...titoli]
+    });
+
+  const primo = await apriFlusso(corpoGiro(0, []), scadenza);
   const enc = new TextEncoder();
-  let resto = "";
-  let motivo = "";
-  const chiudi = (ctrl, perche) => {
-    ctrl.enqueue(enc.encode(`\n{"_fine":"${perche || motivo || "STOP"}"}\n`));
-    ctrl.close();
-  };
+
   return new ReadableStream({
-    async pull(ctrl) {
-      // continuo a leggere finché ho qualcosa da mandare (o è finito)
-      for (;;) {
-        if (Date.now() > scadenza) {
-          lettore.cancel().catch(() => {});
-          chiudi(ctrl, "TEMPO");
-          return;
-        }
-        const { value, done } = await lettore.read();
-        if (done) {
-          chiudi(ctrl);
-          return;
-        }
-        resto += dec.decode(value, { stream: true });
-        const eventi = resto.split("\n");
-        resto = eventi.pop();
-        let mandato = false;
-        for (const ev of eventi) {
-          const riga = ev.trim();
-          if (!riga.startsWith("data:")) continue;
-          try {
-            const j = JSON.parse(riga.slice(5));
-            if (j.candidates?.[0]?.finishReason) motivo = j.candidates[0].finishReason;
-            const t = testoDi(j);
-            if (t) {
-              ctrl.enqueue(enc.encode(t));
-              mandato = true;
-            }
-          } catch {
-            // pezzo non leggibile: lo salto
+    async start(ctrl) {
+      const titoli = [];
+      const visti = new Set(evitaBase.map((t) => t.toLowerCase()));
+      let motivo = "STOP";
+      let body = primo;
+
+      for (let giro = 0; giro < MAX_GIRI; giro++) {
+        if (giro > 0) {
+          if (titoli.length >= obiettivo) break;
+          if (scadenza - Date.now() < 15000) {
+            motivo = "TEMPO";
+            break;
           }
+          try {
+            body = await apriFlusso(corpoGiro(titoli.length, titoli), scadenza);
+          } catch (e) {
+            console.warn("cucina rilancio", e.status, String(e.message).slice(0, 120));
+            motivo = e.status === 429 ? "QUOTA" : "STOP";
+            break;
+          }
+          ctrl.enqueue(enc.encode("\n"));
         }
-        if (mandato) return;
+
+        const nuove = await leggiGiro(body, scadenza, (testo) => ctrl.enqueue(enc.encode(testo)), (riga) => {
+          const t = titoloDiRiga(riga);
+          if (t && !visti.has(t)) {
+            visti.add(t);
+            titoli.push(t);
+            return true;
+          }
+          return false;
+        });
+        if (nuove.tempo) {
+          motivo = "TEMPO";
+          break;
+        }
+        if (!nuove.quante) break; // questo giro non ha portato niente di nuovo: basta
       }
-    },
-    cancel() {
-      lettore.cancel().catch(() => {});
+
+      if (titoli.length >= obiettivo) motivo = "STOP";
+      ctrl.enqueue(enc.encode(`\n{"_fine":"${motivo}"}\n`));
+      ctrl.close();
     }
   });
+}
+
+/** Legge un giro di SSE da Gemini: gira il testo al telefono e conta le ricette nuove. */
+async function leggiGiro(body, scadenza, manda, contaRiga) {
+  const lettore = body.getReader();
+  const dec = new TextDecoder();
+  let resto = "";
+  let righe = "";
+  let quante = 0;
+  try {
+    for (;;) {
+      if (Date.now() > scadenza) {
+        lettore.cancel().catch(() => {});
+        return { quante, tempo: true };
+      }
+      const { value, done } = await lettore.read();
+      if (done) break;
+      resto += dec.decode(value, { stream: true });
+      const eventi = resto.split("\n");
+      resto = eventi.pop();
+      for (const ev of eventi) {
+        const riga = ev.trim();
+        if (!riga.startsWith("data:")) continue;
+        let t = "";
+        try {
+          t = testoDi(JSON.parse(riga.slice(5)));
+        } catch {
+          continue;
+        }
+        if (!t) continue;
+        manda(t);
+        righe += t;
+        const pezzi = righe.split("\n");
+        righe = pezzi.pop();
+        for (const p of pezzi) if (contaRiga(p)) quante++;
+      }
+    }
+  } catch (e) {
+    console.warn("cucina lettura giro", e?.message);
+  }
+  if (contaRiga(righe)) quante++;
+  return { quante, tempo: false };
 }
 
 async function approfondisci(b, scadenza) {

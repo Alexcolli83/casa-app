@@ -310,6 +310,7 @@ function MotivoFine({ fine }) {
     STOP: "Il cuoco ha finito le idee per questa richiesta. Con \"Altre idee\" ne cerca di nuove.",
     TEMPO: "Tempo scaduto (Vercel chiude dopo un minuto): queste sono quelle arrivate in tempo.",
     MAX_TOKENS: "Risposta troppo lunga, tagliata qui.",
+    QUOTA: "Gemini ha raggiunto il limite di richieste: queste sono quelle arrivate.",
     INTERROTTO: "Connessione interrotta: tengo quelle arrivate."
   };
   return <p className="text-xs text-slate-500 text-center px-4">{testi[fine] || "Si è fermato (" + fine + ")."}</p>;
@@ -348,6 +349,11 @@ function SchedaProposta({ p, onScegli }) {
           <h3 className="text-lg font-bold leading-tight">{p.titolo}</h3>
           {p.stagionale && <span className="text-xs shrink-0 rounded-full bg-emerald-500/15 text-emerald-300 px-2 py-0.5">di stagione</span>}
         </div>
+        {(p.origine || p.tipologia) && (
+          <div className="text-xs text-amber-200/90 mt-1">
+            📍 {[p.origine, p.tipologia].filter(Boolean).join(" · ")}
+          </div>
+        )}
         <p className="text-sm text-slate-300 mt-1">{p.descrizione}</p>
       </div>
 
