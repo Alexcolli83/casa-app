@@ -25,7 +25,7 @@ export default function RicettarioView({ ricette, onApri }) {
     const q = cerca.trim().toLowerCase();
     return ricette.filter((r) => {
       if (q) {
-        const testo = [r.titolo, r.descrizione, ...(r.umori || []), ...(r.note || []).map((n) => n.testo)]
+        const testo = [r.titolo, r.descrizione, ...(r.umori || []), ...(r.tag || []), ...(r.note || []).map((n) => n.testo)]
           .join(" ")
           .toLowerCase();
         if (!testo.includes(q)) return false;

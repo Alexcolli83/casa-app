@@ -333,6 +333,7 @@ function SalvaSheet({ proposta, completa, fonti, filtri, onChiudi, onSalvata }) 
         padelle,
         costoEuro: r.costoEuro ?? proposta.costoEuro ?? null,
         umori: filtri?.umori || [],
+        tag: [...(filtri?.basi || []), ...(filtri?.tipi || []), ...(filtri?.verdure || [])],
         stagioni: [stagioneDi(ora)],
         mesi: [nomeMeseIt(ora)],
         voto: voto || null,

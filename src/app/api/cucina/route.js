@@ -194,19 +194,37 @@ const CHEF =
 
 function promptProposte(b) {
   const f = b.filtri || {};
-  return `Siamo a ${oggi()}. Proponi ${f.quante || 4} idee per la cena di stasera, diverse tra loro.
+  const n = f.quante || 5;
+  const persone = f.persone || 2;
+  const sporco =
+    f.sporco === 1
+      ? "UNA sola padella (o pentola), più tagliere e coltello. Nient'altro: niente frullatori, forno o altri attrezzi."
+      : f.sporco === 2
+        ? "poco: massimo 2 pentole/padelle, niente piccoli elettrodomestici."
+        : "non importa; i piccoli elettrodomestici (frullatore, minipimer, robot) usali solo se servono davvero per un piatto più impegnativo.";
+  return `Siamo a ${oggi()}. Proponi esattamente ${n} idee per la cena di stasera.
 
-COSA VOGLIAMO:
-- Stile: ${(f.umori || []).join(", ") || "libero, sorprendimi"}
+${f.testo ? `>>> RICHIESTA SCRITTA DA NOI, HA LA PRECEDENZA ASSOLUTA SU TUTTO IL RESTO: "${f.testo}"
+Se contraddice le scelte qui sotto, vince questa. Se parla di cose da finire in frigo, ogni proposta deve usarle.
+` : ""}
+LE NOSTRE SCELTE (se una voce manca, decidi tu):
+- Base: ${(f.basi || []).join(", ") || "libera"}
+- Tipi preferiti: ${(f.tipi || []).join(", ") || "varia tu"}
+- Verdure: ${(f.verdure || []).join(", ") || "a scelta, meglio se di stagione"}
+- Stile: ${(f.umori || []).join(", ") || "libero"}
 - Tempo massimo totale: ${f.tempo ? f.tempo + " minuti" : "nessun limite"}
-- Quanto possiamo sporcare: ${f.sporco === 1 ? "UNA sola padella/pentola" : f.sporco === 2 ? "poco, massimo 2 pentole" : "non importa"}
-- Persone: ${f.persone || 2}
-${b.extra ? `- Richiesta in parole nostre: ${b.extra}` : ""}
+- Pentole: ${sporco}
+- Persone: ${persone}
+
+REGOLE:
+- Le ${n} proposte devono essere tutte DIVERSE: niente doppioni, niente variazioni dello stesso piatto.
+  Varia l'ingrediente principale (es. per la carne: pollo, maiale, vitello…; per il pesce: calamari, seppie, totani, orata, trota…) e anche la tecnica di cottura.
+- Se abbiamo scelto più basi, distribuiscile tra le proposte.
+- Usa ingredienti di stagione e prezzi ordinari di un supermercato italiano.
 
 IN CASA C'È SEMPRE (dispensa base): ${(b.dispensa || []).join(", ")}.
-${b.frigo ? `OGGI ABBIAMO ANCHE: ${b.frigo}. Cerca di usarlo.` : ""}
 
-${b.gusti ? `COSA ABBIAMO CUCINATO DI RECENTE, CON VOTI E NOTE DELLO CHEF (impara i nostri gusti, evita di riproporre le stesse cose):\n${b.gusti}` : ""}
+${b.gusti ? `COSA ABBIAMO CUCINATO DI RECENTE, CON VOTI E NOTE DELLO CHEF (impara i nostri gusti, non riproporre le stesse cose):\n${b.gusti}` : ""}
 ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 
 Rispondi SOLO con JSON in questo formato:
@@ -214,13 +232,12 @@ Rispondi SOLO con JSON in questo formato:
  "titolo":"nome del piatto",
  "descrizione":"una frase che fa venire fame",
  "perche":"perché è adatta a quello che abbiamo chiesto",
- "ingredienti":["ingrediente principale con quantità per ${f.persone || 2}"],
+ "ingredienti":["ingrediente con quantità per ${persone}"],
  "daComprare":["solo ciò che probabilmente NON abbiamo in casa, vuoto se niente"],
  "passaggi":["3-6 passaggi brevi"],
  "tempoMinuti":numero totale,
  "costoEuro":costo indicativo totale in euro,
  "padelle":numero di pentole/padelle sporcate,
- "utensili":["padella","tagliere"],
  "stagionale":true/false,
  "difficolta":"facile|media|impegnativa"
 }]}`;
