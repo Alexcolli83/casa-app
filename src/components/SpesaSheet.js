@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase";
+import { avvisaSpesa } from "@/components/Campanella";
 import {
   categorie,
   chiaveMese,
@@ -102,10 +103,11 @@ function Modulo({ aperto, spesa, dataIniziale, onChiudi }) {
         }
         await updateDoc(doc(db, "speseCasa", spesa.id), campi);
       } else {
-        await addDoc(collection(db, "speseCasa"), {
+        const ref = await addDoc(collection(db, "speseCasa"), {
           ...campi,
           user: auth.currentUser.email
         });
+        avvisaSpesa(ref.id); // notifica all'altro, senza aspettare
       }
       onChiudi();
     } catch {

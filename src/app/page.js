@@ -13,6 +13,7 @@ import ListaView from "@/components/ListaView";
 import SpesaSheet from "@/components/SpesaSheet";
 import CalendarioView from "@/components/CalendarioView";
 import CucinaView from "@/components/cucina/CucinaView";
+import Campanella from "@/components/Campanella";
 
 const schede = [
   { id: "spese", label: "Spese", icona: "💶" },
@@ -79,6 +80,8 @@ export default function Home() {
       <header className="sticky top-0 z-30 bg-[#0b0f17]/85 backdrop-blur safe-top">
         <div className="max-w-lg mx-auto flex items-center justify-between px-4 py-3">
           <span className="font-bold">🏠 Casa App</span>
+          <div className="flex items-center gap-4">
+          <Campanella />
           <button
             onClick={() => confirm("Vuoi uscire?") && signOut(auth)}
             className="text-sm text-slate-400 flex items-center gap-2"
@@ -88,6 +91,7 @@ export default function Home() {
               {nomeUtente(user.email).charAt(0)}
             </span>
           </button>
+          </div>
         </div>
       </header>
 
