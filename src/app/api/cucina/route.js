@@ -355,20 +355,57 @@ const schemaRicette = (minimo) => ({
   required: ["ricette"]
 });
 
-const corpoProposte = (b, conSchema = true) => {
+/** Stesso stampo nel formato "vecchio" di Google: tipi in MAIUSCOLO, enum con format. */
+function stampoVecchio(x) {
+  if (Array.isArray(x)) return x.map(stampoVecchio);
+  if (!x || typeof x !== "object") return x;
+  const o = {};
+  for (const [k, v] of Object.entries(x)) {
+    if (k === "type") o.type = String(v).toUpperCase();
+    else if (k === "properties") o.properties = Object.fromEntries(Object.entries(v).map(([kk, vv]) => [kk, stampoVecchio(vv)]));
+    else if (k === "minItems" || k === "maxItems") o[k] = String(v);
+    else o[k] = stampoVecchio(v);
+  }
+  if (o.enum) o.format = "enum";
+  return o;
+}
+
+/** Stesso stampo in JSON Schema standard (senza le chiavi solo-Google). */
+function stampoStandard(x) {
+  if (Array.isArray(x)) return x.map(stampoStandard);
+  if (!x || typeof x !== "object") return x;
+  const o = {};
+  for (const [k, v] of Object.entries(x)) {
+    if (k === "propertyOrdering") continue;
+    if (k === "properties") o.properties = Object.fromEntries(Object.entries(v).map(([kk, vv]) => [kk, stampoStandard(vv)]));
+    else o[k] = stampoStandard(v);
+  }
+  return o;
+}
+
+/**
+ * Il corpo della richiesta nei tre modi, in ordine di preferenza:
+ * "standard" (responseJsonSchema) → "vecchio" (responseSchema MAIUSCOLO) → "righe" (senza stampo).
+ */
+const corpoProposte = (b, modo = "standard") => {
   const minimo = Math.min(MIN_RICETTE, Number(b.filtri?.quante) || MIN_RICETTE);
+  const base = { temperature: 1, maxOutputTokens: 32000 };
+  const gc =
+    modo === "standard"
+      ? { ...base, responseMimeType: "application/json", responseJsonSchema: stampoStandard(schemaRicette(minimo)) }
+      : modo === "vecchio"
+        ? { ...base, responseMimeType: "application/json", responseSchema: stampoVecchio(schemaRicette(minimo)) }
+        : base;
   return {
     systemInstruction: { parts: [{ text: CHEF }] },
     contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
-    generationConfig: conSchema
-      ? { temperature: 1, maxOutputTokens: 32000, responseMimeType: "application/json", responseSchema: schemaRicette(minimo) }
-      : { temperature: 1, maxOutputTokens: 32000 }
+    generationConfig: gc
   };
 };
 
 // versione "tutto insieme" (di riserva)
 async function proposte(b, scadenza) {
-  const j = await gemini(corpoProposte(b), VELOCI, scadenza, 45000);
+  const j = await gemini(corpoProposte(b, "righe"), VELOCI, scadenza, 45000);
   return { proposte: righeRicette(testoDi(j)) };
 }
 
@@ -417,7 +454,8 @@ async function apriFlusso(corpoIniziale, scadenza) {
         if (r.status === 400 && corpo.senzaSchema) {
           // qualsiasi rifiuto con lo stampo (anche messaggi vaghi): riprovo con la versione "a righe"
           console.warn("cucina: stampo rifiutato, passo alle righe:", String(ultimo.message).slice(0, 200));
-          corpoIniziale.rifiutoStampo = String(ultimo.message).slice(0, 200);
+          corpoIniziale.rifiutoStampo = (corpoIniziale.rifiutoStampo ? corpoIniziale.rifiutoStampo + " / " : "") + String(ultimo.message).slice(0, 120);
+          corpoIniziale.modoUsato = corpo.senzaSchema.senzaSchema ? "vecchio" : "righe";
           corpo = corpo.senzaSchema;
           i--;
           continue;
@@ -456,7 +494,10 @@ async function proposteFlusso(b, scadenza) {
   const evitaBase = b.evita || [];
   const corpoGiro = (fatte, titoli) => {
     const bb = { ...b, filtri: { ...f, quante: Math.max(5, obiettivo - fatte) }, evita: [...evitaBase, ...titoli] };
-    return { ...corpoProposte(bb, true), senzaSchema: corpoProposte(bb, false) };
+    return {
+      ...corpoProposte(bb, "standard"),
+      senzaSchema: { ...corpoProposte(bb, "vecchio"), senzaSchema: corpoProposte(bb, "righe") }
+    };
   };
 
   const corpoPrimo = corpoGiro(0, []);
@@ -504,7 +545,7 @@ async function proposteFlusso(b, scadenza) {
       }
 
       if (titoli.length >= obiettivo) motivo = "STOP";
-      if (corpoPrimo.rifiutoStampo) {
+      if (corpoPrimo.modoUsato === "righe") {
         ctrl.enqueue(enc.encode(`\n${JSON.stringify({ _nota: "Stampo rifiutato da Google: " + corpoPrimo.rifiutoStampo })}\n`));
       }
       ctrl.enqueue(enc.encode(`\n{"_fine":"${motivo}"}\n`));
