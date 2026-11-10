@@ -115,18 +115,18 @@ export async function POST(req) {
     console.error("caricamento librerie", e);
     return json({ errore: "Il server non riesce a caricare le librerie: " + spiega(e) }, 500);
   }
-  const { adminAuth, adminDb, mandaA } = L;
+  const { adminDb, emailDaToken, mandaA } = L;
 
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  let auth;
+  let db;
   try {
-    auth = adminAuth(); // qui si legge la chiave di servizio
+    db = adminDb(); // qui si legge la chiave di servizio
   } catch (e) {
     return json({ errore: "Chiave FIREBASE_SERVICE_ACCOUNT non valida: " + spiega(e) }, 500);
   }
   let email = null;
   try {
-    email = (await auth.verifyIdToken(token)).email;
+    email = await emailDaToken(token);
   } catch (e) {
     console.warn("token", spiega(e));
   }
@@ -139,7 +139,6 @@ export async function POST(req) {
     return json({ errore: "Richiesta non valida." }, 400);
   }
 
-  const db = adminDb();
   const mio = db.collection("notifiche").doc(email);
 
   try {

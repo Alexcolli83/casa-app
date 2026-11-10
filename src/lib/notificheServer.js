@@ -9,7 +9,6 @@
 //   notificheInviate/{id}     segna cosa è già partito oggi (per non mandarlo due volte)
 
 import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import * as webpush from "web-push";
 
@@ -30,7 +29,21 @@ function app() {
 }
 
 export const adminDb = () => getFirestore(app());
-export const adminAuth = () => getAuth(app());
+
+// Controllo del "pass" dell'utente con il servizio di Google (senza firebase-admin/auth,
+// che su Vercel non si carica). Stesso metodo della sezione Cucina.
+const FIREBASE_API_KEY = "AIzaSyARqITBypOyeTeKsXhPCEggUyqNrCCN--s";
+export async function emailDaToken(token) {
+  if (!token) return null;
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken: token })
+  });
+  if (!r.ok) return null;
+  const j = await r.json();
+  return j.users?.[0]?.email || null;
+}
 
 let vapidPronto = false;
 function vapid() {
