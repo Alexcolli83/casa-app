@@ -242,13 +242,13 @@ ${regolaBase}
 - Le verdure scelte sono quelle che abbiamo: usale, ma la base resta il piatto principale (salvo lo stile "Più verdura che altro").`;
   }
 
-  return `Siamo a ${oggi()}. Proponi esattamente ${n} idee per la cena di stasera, senza doppioni.
+  return `Siamo a ${oggi()}. Proponi PIÙ IDEE POSSIBILI per la cena di stasera (almeno ${n}), senza doppioni.
 
 DOVE CERCARE: fai il GIRO D'ITALIA. Procedi regione per regione, in quest'ordine:
 ${REGIONI.join(", ")}, e alla fine qualcosa di internazionale.
 Per OGNI regione scrivi 2-3 ricette tipiche o ispirate a quella cucina che rispettano le nostre richieste
 (anche tradizionali poco conosciute). Salta una regione solo se proprio non ha nulla di adatto.
-Arriva fino in fondo alla scaletta: è normale che le righe siano tante (${n} o più).
+Arriva fino in fondo alla scaletta, fino alla Sardegna: è normale e voluto che le righe siano tante. Non fermarti a metà.
 
 ${cosa}
 
@@ -263,11 +263,11 @@ IN CASA C'È SEMPRE (dispensa base, usala liberamente): ${(b.dispensa || []).joi
 ${b.gusti ? `I NOSTRI GUSTI (ricette fatte di recente con voti e note dello chef: servono a capire cosa ci piace, NON sono richieste di oggi e non devono cambiare l'ingrediente principale):\n${b.gusti}` : ""}
 ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 
-COME COMPILARE OGNI RICETTA:
-- titolo: nome del piatto; origine: regione (es. Toscana) oppure "internazionale: Paese"; tipologia: es. piatto povero contadino, secondo di mare
-- ingredienti: ${n > 8 ? `solo i principali, max 6, con quantità per ${persone}` : `con quantità per ${persone}`}; daComprare: solo ciò che probabilmente NON abbiamo in casa
-- passaggi: ${n > 8 ? "3-4 passaggi brevissimi, una riga ciascuno" : "3-6 passaggi brevi"}; tempoMinuti totali; costoEuro indicativo totale; padelle = pentole/padelle sporcate
-Se non usi lo stampo JSON, scrivi UNA ricetta per riga come oggetto JSON con questi campi.`;
+FORMATO DELLA RISPOSTA (importantissimo):
+UNA RICETTA PER RIGA. Ogni riga è un oggetto JSON completo, su una sola riga. Finita una riga vai a capo e scrivi la successiva.
+Niente altro testo, niente parentesi quadre all'inizio o alla fine, niente \`\`\`.
+Esempio di riga:
+{"titolo":"nome del piatto","origine":"regione (es. Toscana) oppure internazionale: Paese","tipologia":"es. piatto povero contadino, secondo di mare","descrizione":"una frase che fa venire fame","perche":"perché è adatta a quello che abbiamo chiesto","ingredienti":["solo i principali, max 6, con quantità per ${persone}"],"daComprare":["solo ciò che probabilmente NON abbiamo in casa"],"passaggi":["3-4 passaggi brevissimi"],"tempoMinuti":30,"costoEuro":8,"padelle":1,"stagionale":true,"difficolta":"facile"}`;
 }
 
 function promptApprofondisci(b) {
@@ -317,95 +317,16 @@ function righeRicette(testo) {
     .filter((x) => x?.titolo);
 }
 
-const MIN_RICETTE = 40;
-
-/** Lo "stampo" della risposta: Gemini NON può chiudere prima di MIN_RICETTE ricette. */
-const schemaRicette = (minimo) => ({
-  type: "object",
-  properties: {
-    ricette: {
-      type: "array",
-      minItems: minimo,
-      maxItems: 80,
-      items: {
-        type: "object",
-        properties: {
-          titolo: { type: "string" },
-          origine: { type: "string" },
-          tipologia: { type: "string" },
-          descrizione: { type: "string" },
-          perche: { type: "string" },
-          ingredienti: { type: "array", items: { type: "string" } },
-          daComprare: { type: "array", items: { type: "string" } },
-          passaggi: { type: "array", items: { type: "string" } },
-          tempoMinuti: { type: "integer" },
-          costoEuro: { type: "number" },
-          padelle: { type: "integer" },
-          stagionale: { type: "boolean" },
-          difficolta: { type: "string", enum: ["facile", "media", "impegnativa"] }
-        },
-        required: ["titolo", "origine", "tipologia", "descrizione", "ingredienti", "passaggi", "tempoMinuti", "costoEuro", "padelle", "stagionale", "difficolta"],
-        propertyOrdering: [
-          "titolo", "origine", "tipologia", "descrizione", "perche", "ingredienti", "daComprare",
-          "passaggi", "tempoMinuti", "costoEuro", "padelle", "stagionale", "difficolta"
-        ]
-      }
-    }
-  },
-  required: ["ricette"]
+/** Il corpo della richiesta per le proposte: formato "una ricetta per riga". */
+const corpoProposte = (b) => ({
+  systemInstruction: { parts: [{ text: CHEF }] },
+  contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
+  generationConfig: { temperature: 0.9, maxOutputTokens: 32000 }
 });
-
-/** Stesso stampo nel formato "vecchio" di Google: tipi in MAIUSCOLO, enum con format. */
-function stampoVecchio(x) {
-  if (Array.isArray(x)) return x.map(stampoVecchio);
-  if (!x || typeof x !== "object") return x;
-  const o = {};
-  for (const [k, v] of Object.entries(x)) {
-    if (k === "type") o.type = String(v).toUpperCase();
-    else if (k === "properties") o.properties = Object.fromEntries(Object.entries(v).map(([kk, vv]) => [kk, stampoVecchio(vv)]));
-    else if (k === "minItems" || k === "maxItems") o[k] = String(v);
-    else o[k] = stampoVecchio(v);
-  }
-  if (o.enum) o.format = "enum";
-  return o;
-}
-
-/** Stesso stampo in JSON Schema standard (senza le chiavi solo-Google). */
-function stampoStandard(x) {
-  if (Array.isArray(x)) return x.map(stampoStandard);
-  if (!x || typeof x !== "object") return x;
-  const o = {};
-  for (const [k, v] of Object.entries(x)) {
-    if (k === "propertyOrdering") continue;
-    if (k === "properties") o.properties = Object.fromEntries(Object.entries(v).map(([kk, vv]) => [kk, stampoStandard(vv)]));
-    else o[k] = stampoStandard(v);
-  }
-  return o;
-}
-
-/**
- * Il corpo della richiesta nei tre modi, in ordine di preferenza:
- * "standard" (responseJsonSchema) → "vecchio" (responseSchema MAIUSCOLO) → "righe" (senza stampo).
- */
-const corpoProposte = (b, modo = "standard") => {
-  const minimo = Math.min(MIN_RICETTE, Number(b.filtri?.quante) || MIN_RICETTE);
-  const base = { temperature: 1, maxOutputTokens: 32000 };
-  const gc =
-    modo === "standard"
-      ? { ...base, responseMimeType: "application/json", responseJsonSchema: stampoStandard(schemaRicette(minimo)) }
-      : modo === "vecchio"
-        ? { ...base, responseMimeType: "application/json", responseSchema: stampoVecchio(schemaRicette(minimo)) }
-        : base;
-  return {
-    systemInstruction: { parts: [{ text: CHEF }] },
-    contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
-    generationConfig: gc
-  };
-};
 
 // versione "tutto insieme" (di riserva)
 async function proposte(b, scadenza) {
-  const j = await gemini(corpoProposte(b, "righe"), VELOCI, scadenza, 45000);
+  const j = await gemini(corpoProposte(b), VELOCI, scadenza, 45000);
   return { proposte: righeRicette(testoDi(j)) };
 }
 
@@ -414,15 +335,13 @@ async function proposte(b, scadenza) {
  * Al telefono mando il testo così com'è; è lui che taglia le righe.
  */
 /** Apre un flusso con il primo modello disponibile. Ritorna il body da leggere. */
-async function apriFlusso(corpoIniziale, scadenza) {
-  let corpo = corpoIniziale;
+async function apriFlusso(corpo, scadenza) {
   let ultimo;
-  for (const m of VELOCI) {
+  for (const m of BRAVI) {
     if (scadenza - Date.now() < 5000) break;
     for (let i = pensieroBuono[m] ?? 0; i < PENSIERO.length; i++) {
       const gc = { ...corpo.generationConfig };
       if (PENSIERO[i]) gc.thinkingConfig = PENSIERO[i];
-      const { senzaSchema, ...daMandare } = corpo;
       const ctrl = new AbortController();
       const attesa = setTimeout(() => ctrl.abort(), Math.min(20000, scadenza - Date.now()));
       let r;
@@ -435,7 +354,7 @@ async function apriFlusso(corpoIniziale, scadenza) {
               "Content-Type": "application/json",
               "x-goog-api-key": (process.env.GEMINI_API_KEY || "").trim()
             },
-            body: JSON.stringify({ ...daMandare, generationConfig: gc }),
+            body: JSON.stringify({ ...corpo, generationConfig: gc }),
             signal: ctrl.signal
           }
         );
@@ -451,15 +370,6 @@ async function apriFlusso(corpoIniziale, scadenza) {
         ultimo = new ErroreGemini(j.error?.message || "errore " + r.status, r.status, j.error?.details);
         console.warn("cucina flusso", m, r.status, String(ultimo.message).slice(0, 120));
         if (r.status === 400 && /think/i.test(ultimo.message)) continue; // altra variante di "pensiero"
-        if (r.status === 400 && corpo.senzaSchema) {
-          // qualsiasi rifiuto con lo stampo (anche messaggi vaghi): riprovo con la versione "a righe"
-          console.warn("cucina: stampo rifiutato, passo alle righe:", String(ultimo.message).slice(0, 200));
-          corpoIniziale.rifiutoStampo = (corpoIniziale.rifiutoStampo ? corpoIniziale.rifiutoStampo + " / " : "") + String(ultimo.message).slice(0, 120);
-          corpoIniziale.modoUsato = corpo.senzaSchema.senzaSchema ? "vecchio" : "righe";
-          corpo = corpo.senzaSchema;
-          i--;
-          continue;
-        }
         if ([404, 429, 500, 503].includes(r.status) || (r.status === 400 && /model/i.test(ultimo.message))) break;
         throw ultimo;
       }
@@ -494,10 +404,8 @@ async function proposteFlusso(b, scadenza) {
   const evitaBase = b.evita || [];
   const corpoGiro = (fatte, titoli) => {
     const bb = { ...b, filtri: { ...f, quante: Math.max(5, obiettivo - fatte) }, evita: [...evitaBase, ...titoli] };
-    return {
-      ...corpoProposte(bb, "standard"),
-      senzaSchema: { ...corpoProposte(bb, "vecchio"), senzaSchema: corpoProposte(bb, "righe") }
-    };
+    // niente "stampo": Google lo rifiuta e ogni rifiuto è una richiesta sprecata
+    return corpoProposte(bb);
   };
 
   const corpoPrimo = corpoGiro(0, []);
@@ -545,9 +453,6 @@ async function proposteFlusso(b, scadenza) {
       }
 
       if (titoli.length >= obiettivo) motivo = "STOP";
-      if (corpoPrimo.modoUsato === "righe") {
-        ctrl.enqueue(enc.encode(`\n${JSON.stringify({ _nota: "Stampo rifiutato da Google: " + corpoPrimo.rifiutoStampo })}\n`));
-      }
       ctrl.enqueue(enc.encode(`\n{"_fine":"${motivo}"}\n`));
       ctrl.close();
     }
