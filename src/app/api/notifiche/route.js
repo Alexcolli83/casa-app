@@ -97,9 +97,9 @@ async function promemoria(tipo, oraVoluta, forza, soloA) {
     return { niente: true };
   }
 
-  const partite = await mandaA(soloA || allowedUsers, messaggio);
-  if (!forza) await segno.set({ quando: new Date(), partite });
-  return { partite, messaggio };
+  const esito = await mandaA(soloA || allowedUsers, messaggio);
+  if (!forza) await segno.set({ quando: new Date(), partite: esito.partite });
+  return { ...esito, messaggio };
 }
 
 // ---------- azioni dall'app ----------
@@ -158,8 +158,7 @@ export async function POST(req) {
     }
 
     if (b.azione === "prova") {
-      const partite = await mandaA([email], { titolo: "🔔 Casa App", testo: "Le notifiche funzionano!" });
-      return json({ partite });
+      return json(await mandaA([email], { titolo: "🔔 Casa App", testo: "Le notifiche funzionano!" }));
     }
 
     if (b.azione === "provaPromemoria") {
@@ -174,12 +173,12 @@ export async function POST(req) {
       if (d.user !== email) return json({ errore: "Non è una tua spesa." }, 403);
       const cat = catInfo(d.categoria);
       const altri = allowedUsers.filter((u) => u !== email);
-      const partite = await mandaA(altri, {
+      const esito = await mandaA(altri, {
         titolo: `💸 ${nomeUtente(email)} ha aggiunto una spesa`,
         testo: `${cat.emoji} ${cat.label}: ${euro(d.importo)}${d.nota ? ` – ${d.nota}` : ""}`,
         url: "/"
       });
-      return json({ partite });
+      return json(esito);
     }
 
     return json({ errore: "Azione sconosciuta." }, 400);

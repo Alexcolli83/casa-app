@@ -11,7 +11,7 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import * as webpush from "web-push";
-import { createPrivateKey } from "crypto";
+import { createECDH, createPrivateKey } from "crypto";
 
 export const VAPID_PUBLIC_KEY =
   "BFLK-8pjCLOC6wNBUbj1GK1PoflG9X3vvd4HEWy8C-xD47y9pzE4AXF3g8dIx6HgFYseVr8tGg6IJM47-emrHJU";
@@ -153,24 +153,47 @@ export async function emailDaToken(token) {
   return j.users?.[0]?.email || null;
 }
 
+/** Controlla che la chiave privata su Vercel sia la "gemella" della chiave pubblica dell'app. */
+function controllaVapid() {
+  const priv = (process.env.VAPID_PRIVATE_KEY || "").trim();
+  let pub;
+  try {
+    const ecdh = createECDH("prime256v1");
+    ecdh.setPrivateKey(Buffer.from(priv.replace(/-/g, "+").replace(/_/g, "/"), "base64"));
+    pub = ecdh.getPublicKey().toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  } catch (e) {
+    throw new Error(`VAPID_PRIVATE_KEY non valida (${priv.length} caratteri, ne servono 43): ${e.message}`);
+  }
+  if (pub !== VAPID_PUBLIC_KEY) {
+    throw new Error(`VAPID_PRIVATE_KEY non corrisponde alla chiave dell'app (${priv.length} caratteri): ricopiala da capo`);
+  }
+}
+
 let vapidPronto = false;
 function vapid() {
   if (vapidPronto) return;
+  controllaVapid();
   webpush.setVapidDetails("mailto:casa-app@example.com", VAPID_PUBLIC_KEY, (process.env.VAPID_PRIVATE_KEY || "").trim());
   vapidPronto = true;
 }
 
-/** Manda una notifica a tutti i telefoni delle persone indicate (email). Ritorna quante ne sono partite. */
+/**
+ * Manda una notifica a tutti i telefoni delle persone indicate (email).
+ * Ritorna { partite, iscritti, errori } (errori = motivi dei rifiuti, per capire cosa non va).
+ */
 export async function mandaA(emails, { titolo, testo, url = "/" }) {
   vapid();
   const db = adminDb();
   const payload = JSON.stringify({ titolo, testo, url });
   let partite = 0;
+  let iscritti = 0;
+  const errori = [];
   for (const email of emails) {
     const ref = db.collection("notifiche").doc(email);
     const snap = await ref.get();
     const subs = snap.exists ? snap.data().subs || [] : [];
     const vive = [];
+    iscritti += subs.length;
     for (const sub of subs) {
       try {
         await webpush.sendNotification(sub, payload, { TTL: 6 * 3600 });
@@ -180,11 +203,12 @@ export async function mandaA(emails, { titolo, testo, url = "/" }) {
         // 404/410 = il telefono ha tolto il permesso o reinstallato l'app: la butto
         if (e.statusCode !== 404 && e.statusCode !== 410) vive.push(sub);
         console.warn("push", email, e.statusCode, String(e.body || e.message).slice(0, 120));
+        errori.push(`${e.statusCode || ""} ${String(e.body || e.message).slice(0, 150)}`.trim());
       }
     }
     if (vive.length !== subs.length) await ref.set({ subs: vive }, { merge: true });
   }
-  return partite;
+  return { partite, iscritti, errori };
 }
 
 /** Data e ora "italiane" (Europe/Rome), qualunque sia il fuso del server. */

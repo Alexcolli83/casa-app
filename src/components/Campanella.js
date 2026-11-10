@@ -104,7 +104,9 @@ export default function Campanella() {
     try {
       const j = await chiamaNotifiche(dati);
       if (j?.niente) setMsg("Niente da notificare (nessuna cena/impegno segnato).");
-      else setMsg(j?.partite ? okMsg : "Nessun telefono iscritto ha ricevuto: riattiva le notifiche.");
+      else if (j?.partite) setMsg(okMsg);
+      else if (j?.errori?.length) setMsg("Google ha rifiutato l'invio: " + j.errori.join(" | "));
+      else setMsg(`Nessun telefono iscritto (${j?.iscritti ?? 0} trovati): spegni e riattiva le notifiche.`);
     } catch (e) {
       setMsg(e.message);
     } finally {
