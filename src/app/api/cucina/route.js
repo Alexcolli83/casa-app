@@ -414,8 +414,10 @@ async function apriFlusso(corpoIniziale, scadenza) {
         ultimo = new ErroreGemini(j.error?.message || "errore " + r.status, r.status, j.error?.details);
         console.warn("cucina flusso", m, r.status, String(ultimo.message).slice(0, 120));
         if (r.status === 400 && /think/i.test(ultimo.message)) continue; // altra variante di "pensiero"
-        if (r.status === 400 && /schema|minItems|propertyOrdering/i.test(ultimo.message) && corpo.senzaSchema) {
-          // lo stampo non piace a questo modello: riprovo con la versione "a righe"
+        if (r.status === 400 && corpo.senzaSchema) {
+          // qualsiasi rifiuto con lo stampo (anche messaggi vaghi): riprovo con la versione "a righe"
+          console.warn("cucina: stampo rifiutato, passo alle righe:", String(ultimo.message).slice(0, 200));
+          corpoIniziale.rifiutoStampo = String(ultimo.message).slice(0, 200);
           corpo = corpo.senzaSchema;
           i--;
           continue;
@@ -457,7 +459,8 @@ async function proposteFlusso(b, scadenza) {
     return { ...corpoProposte(bb, true), senzaSchema: corpoProposte(bb, false) };
   };
 
-  const primo = await apriFlusso(corpoGiro(0, []), scadenza);
+  const corpoPrimo = corpoGiro(0, []);
+  const primo = await apriFlusso(corpoPrimo, scadenza);
   const enc = new TextEncoder();
 
   return new ReadableStream({
@@ -501,6 +504,9 @@ async function proposteFlusso(b, scadenza) {
       }
 
       if (titoli.length >= obiettivo) motivo = "STOP";
+      if (corpoPrimo.rifiutoStampo) {
+        ctrl.enqueue(enc.encode(`\n${JSON.stringify({ _nota: "Stampo rifiutato da Google: " + corpoPrimo.rifiutoStampo })}\n`));
+      }
       ctrl.enqueue(enc.encode(`\n{"_fine":"${motivo}"}\n`));
       ctrl.close();
     }
@@ -709,6 +715,9 @@ export async function POST(req) {
     if (e?.status === 401 || e?.status === 403) {
       return json({ errore: "La chiave Gemini non viene accettata. Controllala su Vercel." }, 502);
     }
-    return json({ errore: "Il cuoco si è confuso, riprova tra un attimo." }, 502);
+    return json(
+      { errore: "Il cuoco si è confuso, riprova tra un attimo. (Dettaglio: " + String(e?.message || e).slice(0, 160) + ")" },
+      502
+    );
   }
 }

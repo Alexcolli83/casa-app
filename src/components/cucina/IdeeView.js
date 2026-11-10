@@ -102,7 +102,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
         }
       );
       if (!esito.quante) throw new Error("Nessuna idea questa volta, riprova.");
-      setFine(esito.fine);
+      setFine(esito.fine + (esito.nota ? "|" + esito.nota : ""));
     } catch (e) {
       setErrore(e.message);
     } finally {
@@ -305,7 +305,8 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
   );
 }
 
-function MotivoFine({ fine }) {
+function MotivoFine({ fine: grezzo }) {
+  const [fine, nota] = grezzo.split("|");
   const testi = {
     STOP: "Il cuoco ha finito le idee per questa richiesta. Con \"Altre idee\" ne cerca di nuove.",
     TEMPO: "Tempo scaduto (Vercel chiude dopo un minuto): queste sono quelle arrivate in tempo.",
@@ -313,7 +314,12 @@ function MotivoFine({ fine }) {
     QUOTA: "Gemini ha raggiunto il limite di richieste: queste sono quelle arrivate.",
     INTERROTTO: "Connessione interrotta: tengo quelle arrivate."
   };
-  return <p className="text-xs text-slate-500 text-center px-4">{testi[fine] || "Si è fermato (" + fine + ")."}</p>;
+  return (
+    <div className="text-xs text-slate-500 text-center px-4 space-y-1">
+      <p>{testi[fine] || "Si è fermato (" + fine + ")."}</p>
+      {nota && <p className="text-amber-300/80">{nota}</p>}
+    </div>
+  );
 }
 
 function Passo({ n, titolo, aiuto, evidenzia, sbiadito, children }) {
