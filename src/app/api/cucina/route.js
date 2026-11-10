@@ -18,7 +18,18 @@ export const maxDuration = 60;
 
 const FIREBASE_API_KEY = "AIzaSyARqITBypOyeTeKsXhPCEggUyqNrCCN--s";
 
-const MODELLI = [
+// Modelli in ordine di prova. Se uno è intasato, lento o senza quota, si passa al successivo.
+// VELOCI: per proposte e chat (risposta in pochi secondi).
+// BRAVI: per la ricetta completa con ricerca sul web (più raffinati, ma a volte intasati).
+const VELOCI = [
+  "gemini-flash-lite-latest",
+  "gemini-3.5-flash-lite",
+  process.env.GEMINI_MODEL,
+  "gemini-3.8-flash",
+  "gemini-flash-latest"
+].filter((m, i, a) => m && a.indexOf(m) === i);
+
+const BRAVI = [
   process.env.GEMINI_MODEL,
   "gemini-3.8-flash",
   "gemini-flash-latest",
@@ -26,7 +37,8 @@ const MODELLI = [
   "gemini-3.5-flash-lite"
 ].filter((m, i, a) => m && a.indexOf(m) === i);
 
-let modelloBuono = null; // il primo che ha funzionato, per non riprovare ogni volta
+const MAX_TENTATIVO = 25000; // un singolo modello non può tenerci appesi più di 25 secondi
+const BUDGET = 50000; // tempo totale per richiesta (Vercel taglia a 60)
 
 // ---------- controllo di chi chiama ----------
 
@@ -63,21 +75,33 @@ class ErroreGemini extends Error {
   }
 }
 
-async function chiamaModello(modello, corpo) {
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${modello}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": (process.env.GEMINI_API_KEY || "").trim()
-      },
-      body: JSON.stringify(corpo)
-    }
-  );
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new ErroreGemini(j.error?.message || "errore " + r.status, r.status);
-  return j;
+/** Una chiamata a un modello, con cronometro: se sfora "ms" la abbandono. */
+async function chiamaModello(modello, corpo, ms = MAX_TENTATIVO) {
+  if (ms < 2000) throw new ErroreGemini("tempo finito", 504);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modello}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": (process.env.GEMINI_API_KEY || "").trim()
+        },
+        body: JSON.stringify(corpo),
+        signal: ctrl.signal
+      }
+    );
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new ErroreGemini(j.error?.message || "errore " + r.status, r.status);
+    return j;
+  } catch (e) {
+    if (e.name === "AbortError") throw new ErroreGemini(`${modello} troppo lento`, 504);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Quanto far "ragionare" il modello prima di rispondere: poco, sennò è lentissimo.
@@ -85,14 +109,15 @@ async function chiamaModello(modello, corpo) {
 const PENSIERO = [{ thinkingLevel: "minimal" }, { thinkingLevel: "low" }, { thinkingBudget: 0 }, null];
 const pensieroBuono = {}; // modello -> indice in PENSIERO che ha funzionato
 
-async function chiamaVeloce(modello, corpo) {
+async function chiamaVeloce(modello, corpo, scadenza = Date.now() + MAX_TENTATIVO) {
   const inizio = pensieroBuono[modello] ?? 0;
   let ultimo;
   for (let i = inizio; i < PENSIERO.length; i++) {
     const gc = { ...(corpo.generationConfig || {}) };
     if (PENSIERO[i]) gc.thinkingConfig = PENSIERO[i];
     try {
-      const j = await chiamaModello(modello, { ...corpo, generationConfig: gc });
+      const ms = Math.min(MAX_TENTATIVO, scadenza - Date.now());
+      const j = await chiamaModello(modello, { ...corpo, generationConfig: gc }, ms);
       pensieroBuono[modello] = i;
       return j;
     } catch (e) {
@@ -105,25 +130,23 @@ async function chiamaVeloce(modello, corpo) {
   throw ultimo;
 }
 
-/** Prova i modelli in ordine finché uno risponde. */
-async function gemini(corpo) {
-  const lista = modelloBuono ? [modelloBuono, ...MODELLI.filter((m) => m !== modelloBuono)] : MODELLI;
+/** Prova i modelli in ordine finché uno risponde, senza superare la scadenza. */
+async function gemini(corpo, modelli, scadenza) {
   let ultimo;
-  for (const m of lista) {
+  for (const m of modelli) {
+    if (scadenza - Date.now() < 3000) break;
     try {
-      const j = await chiamaVeloce(m, corpo);
-      modelloBuono = m;
-      return j;
+      return await chiamaVeloce(m, corpo, scadenza);
     } catch (e) {
       ultimo = e;
-      // modello inesistente o non disponibile: passo al prossimo
-      if (e.status === 404 || (e.status === 400 && /model/i.test(e.message))) continue;
-      // quota finita o modello intasato: provo il prossimo
-      if (e.status === 429 || e.status === 503 || e.status === 500) continue;
+      console.warn("cucina modello", m, e.status, String(e.message).slice(0, 120));
+      // inesistente, senza quota, intasato o lento: passo al prossimo
+      if ([404, 429, 500, 503, 504].includes(e.status)) continue;
+      if (e.status === 400 && /model/i.test(e.message)) continue;
       throw e;
     }
   }
-  throw ultimo;
+  throw ultimo || new ErroreGemini("tempo finito", 504);
 }
 
 const testoDi = (j) =>
@@ -233,17 +256,17 @@ Riscrivi tutto con parole tue. Rispondi SOLO con JSON:
 
 // ---------- le azioni ----------
 
-async function proposte(b) {
+async function proposte(b, scadenza) {
   const j = await gemini({
     systemInstruction: { parts: [{ text: CHEF }] },
     contents: [{ role: "user", parts: [{ text: promptProposte(b) }] }],
     generationConfig: { responseMimeType: "application/json", temperature: 1 }
-  });
+  }, VELOCI, scadenza);
   const dati = leggiJSON(testoDi(j));
   return { proposte: Array.isArray(dati.proposte) ? dati.proposte : [] };
 }
 
-async function approfondisci(b) {
+async function approfondisci(b, scadenza) {
   const corpo = {
     systemInstruction: { parts: [{ text: CHEF }] },
     contents: [{ role: "user", parts: [{ text: promptApprofondisci(b) }] }],
@@ -251,18 +274,22 @@ async function approfondisci(b) {
   };
   let j;
   try {
-    // con la ricerca Google
-    j = await gemini({ ...corpo, tools: [{ google_search: {} }] });
+    // con la ricerca Google, lasciando almeno 15 secondi per il piano B
+    j = await gemini({ ...corpo, tools: [{ google_search: {} }] }, BRAVI, scadenza - 15000);
   } catch (e) {
     if (e.status === 401 || e.status === 403) throw e;
-    // ricerca non disponibile (quota o altro): rispondo comunque, senza web
-    j = await gemini({ ...corpo, generationConfig: { ...corpo.generationConfig, responseMimeType: "application/json" } });
+    // piano B: niente web, modello veloce
+    j = await gemini(
+      { ...corpo, generationConfig: { ...corpo.generationConfig, responseMimeType: "application/json" } },
+      VELOCI,
+      scadenza
+    );
   }
   const ricetta = leggiJSON(testoDi(j));
   return { ricetta, fonti: fontiDi(j) };
 }
 
-async function chiedi(b) {
+async function chiedi(b, scadenza) {
   const r = b.ricetta || {};
   const sistema =
     CHEF +
@@ -279,7 +306,7 @@ async function chiedi(b) {
     systemInstruction: { parts: [{ text: sistema }] },
     contents,
     generationConfig: { temperature: 0.7 }
-  });
+  }, VELOCI, scadenza);
   return { risposta: testoDi(j) || "Non ho capito, me la rifai?" };
 }
 
@@ -301,10 +328,10 @@ export async function GET() {
     prove: []
   };
   if (!chiave) return json(esito);
-  for (const m of MODELLI) {
+  for (const m of VELOCI) {
     const t0 = Date.now();
     try {
-      await chiamaVeloce(m, { contents: [{ role: "user", parts: [{ text: "Rispondi solo: ok" }] }] });
+      await chiamaVeloce(m, { contents: [{ role: "user", parts: [{ text: "Rispondi solo: ok" }] }] }, Date.now() + 8000);
       esito.prove.push({
         modello: m,
         esito: "OK",
@@ -320,6 +347,7 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const scadenza = Date.now() + BUDGET;
   if (!process.env.GEMINI_API_KEY) {
     return json({ errore: "Manca GEMINI_API_KEY su Vercel." }, 500);
   }
@@ -341,9 +369,12 @@ export async function POST(req) {
   if (!azione) return json({ errore: "Azione sconosciuta." }, 400);
 
   try {
-    return json(await azione(b));
+    return json(await azione(b, scadenza));
   } catch (e) {
     console.error("cucina", b.azione, e?.status, e?.message);
+    if (e?.status === 504) {
+      return json({ errore: "Google oggi è lento o intasato: riprova tra qualche minuto." }, 504);
+    }
     if (e?.status === 429) {
       return json({ errore: "Per oggi Gemini ha finito le risposte gratis. Riprova più tardi o domani." }, 429);
     }
