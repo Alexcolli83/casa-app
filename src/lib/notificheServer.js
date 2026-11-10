@@ -22,10 +22,51 @@ export function configOk() {
   return manca;
 }
 
+/**
+ * Rimette a posto la chiave privata se nel copia-incolla si è rovinata:
+ * "\\n" scritti come testo, a capo spariti, spazi al posto degli a capo, virgolette in più.
+ */
+function sistemaChiave(k) {
+  let t = String(k || "").trim().replace(/^"|"$/g, "");
+  t = t.replace(/\\\\n/g, "\n").replace(/\\n/g, "\n").replace(/\r/g, "");
+  const m = t.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
+  if (!m) return t;
+  const corpo = m[2].replace(/[^A-Za-z0-9+/=]/g, ""); // solo i caratteri della chiave
+  const righe = corpo.match(/.{1,64}/g) || [];
+  return `-----BEGIN ${m[1]}-----\n${righe.join("\n")}\n-----END ${m[1]}-----\n`;
+}
+
+/** Legge la chiave di servizio, anche se incollata con qualche difetto. */
+function leggiServiceAccount() {
+  let testo = String(process.env.FIREBASE_SERVICE_ACCOUNT || "").trim();
+  // a volte arriva tra virgolette o con gli a capo "veri" dentro le stringhe
+  if (testo.startsWith("'") && testo.endsWith("'")) testo = testo.slice(1, -1);
+  let sa;
+  try {
+    sa = JSON.parse(testo);
+  } catch {
+    // a capo "veri" dentro le stringhe (non permessi in JSON): li trasformo in \n e riprovo
+    let fuori = "";
+    let inStringa = false;
+    for (let i = 0; i < testo.length; i++) {
+      const c = testo[i];
+      if (c === '"' && testo[i - 1] !== "\\") inStringa = !inStringa;
+      if (inStringa && (c === "\n" || c === "\r")) {
+        if (c === "\n") fuori += "\\n";
+        continue;
+      }
+      fuori += c;
+    }
+    sa = JSON.parse(fuori);
+  }
+  if (typeof sa === "string") sa = JSON.parse(sa); // incollata "doppia"
+  sa.private_key = sistemaChiave(sa.private_key);
+  return sa;
+}
+
 function app() {
   if (getApps().length) return getApps()[0];
-  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  return initializeApp({ credential: cert(sa) });
+  return initializeApp({ credential: cert(leggiServiceAccount()) });
 }
 
 export const adminDb = () => getFirestore(app());
