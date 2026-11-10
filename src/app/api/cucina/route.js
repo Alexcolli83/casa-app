@@ -196,42 +196,63 @@ function promptProposte(b) {
   const f = b.filtri || {};
   const n = f.quante || 5;
   const persone = f.persone || 2;
+  const testo = (f.testo || "").trim();
   const sporco =
     f.sporco === 1
       ? "UNA sola padella (o pentola), più tagliere e coltello. Nient'altro: niente frullatori, forno o altri attrezzi."
       : f.sporco === 2
         ? "poco: massimo 2 pentole/padelle, niente piccoli elettrodomestici."
         : "non importa; i piccoli elettrodomestici (frullatore, minipimer, robot) usali solo se servono davvero per un piatto più impegnativo.";
-  return `Siamo a ${oggi()}. Proponi esattamente ${n} idee per la cena di stasera.
 
-${f.testo ? `>>> RICHIESTA SCRITTA DA NOI, HA LA PRECEDENZA ASSOLUTA SU TUTTO IL RESTO: "${f.testo}"
-Se contraddice le scelte qui sotto, vince questa. Se parla di cose da finire in frigo, ogni proposta deve usarle.
-` : ""}
-LE NOSTRE SCELTE (se una voce manca, decidi tu):
+  const scelte = [
+    (f.basi || []).length && `base: ${f.basi.join(", ")}`,
+    (f.tipi || []).length && `ingrediente: ${f.tipi.join(", ")}`,
+    (f.verdure || []).length && `verdure in casa: ${f.verdure.join(", ")}`,
+    (f.umori || []).length && `stile: ${f.umori.join(", ")}`
+  ].filter(Boolean);
+
+  let cosa;
+  if (testo) {
+    // il testo scritto è LA ricerca: le spunte sono solo un contorno
+    cosa = `LA NOSTRA RICHIESTA (è l'unica cosa che conta davvero): "${testo}"
+
+- Se descrive un piatto o degli ingredienti precisi, TUTTE le ${n} proposte devono contenere proprio quegli ingredienti come protagonisti: ${n} modi diversi di fare quel piatto o piatti molto vicini. Non cambiare ingrediente principale.
+- Se parla di cose da finire in frigo, ogni proposta le deve usare.
+- Non aggiungere carni, pesci o legumi che non abbiamo nominato.
+${scelte.length ? `- Suggerimenti secondari (usali SOLO se si sposano con la richiesta, altrimenti IGNORALI del tutto): ${scelte.join("; ")}.` : ""}`;
+  } else {
+    const t = f.tipi || [];
+    const regolaBase = t.length
+      ? `- OGNI proposta deve avere come protagonista ${t.length === 1 ? `il/la ${t[0]}` : `uno di questi: ${t.join(", ")} (distribuiscili tra le proposte)`}. NON proporre altri tipi di carne, pesce o legumi.
+- Le ${n} proposte devono essere tutte DIVERSE: cambia taglio, cottura, condimento e stile (in padella, al forno, in umido, impanato, alla griglia…).`
+      : (f.basi || []).length
+        ? `- OGNI proposta deve avere come protagonista la base scelta (${f.basi.join(", ")}); dentro la base varia l'ingrediente principale. Se le basi sono più d'una, distribuiscile.
+- Le ${n} proposte devono essere tutte DIVERSE, niente doppioni.`
+        : `- Le ${n} proposte devono essere tutte DIVERSE: varia ingrediente principale e cottura.`;
+    cosa = `LE NOSTRE SCELTE (se una voce manca, decidi tu):
 - BASE DEL PIATTO (è la ricerca principale): ${(f.basi || []).join(", ") || "libera"}
-- INGREDIENTE PRINCIPALE OBBLIGATORIO: ${(f.tipi || []).join(", ") || "non scelto, varia tu dentro la base"}
-- Verdure che abbiamo in casa da usare come contorno o condimento: ${(f.verdure || []).join(", ") || "a scelta, meglio se di stagione"}
+- INGREDIENTE PRINCIPALE: ${(f.tipi || []).join(", ") || "non scelto"}
+- Verdure che abbiamo in casa, da usare come contorno o condimento: ${(f.verdure || []).join(", ") || "a scelta, meglio se di stagione"}
 - Stile: ${(f.umori || []).join(", ") || "libero"}
+
+REGOLE:
+${regolaBase}
+- Le verdure scelte sono quelle che abbiamo: usale, ma la base resta il piatto principale (salvo lo stile "Più verdura che altro").`;
+  }
+
+  return `Siamo a ${oggi()}. Proponi esattamente ${n} idee per la cena di stasera, senza doppioni.
+
+${cosa}
+
+SEMPRE:
 - Tempo massimo totale: ${f.tempo ? f.tempo + " minuti" : "nessun limite"}
 - Pentole: ${sporco}
 - Persone: ${persone}
+- Ingredienti di stagione e prezzi ordinari di un supermercato italiano.
 
-REGOLE:
-${
-  (f.tipi || []).length
-    ? `- OGNI proposta deve avere come protagonista ${f.tipi.length === 1 ? `il/la ${f.tipi[0]}` : `uno di questi: ${f.tipi.join(", ")} (distribuiscili tra le proposte)`}. NON proporre altri tipi di carne, pesce o legumi.
-- Le ${n} proposte devono essere tutte DIVERSE tra loro: cambia taglio, cottura, condimento e stile (es. in padella, al forno, in umido, impanato, alla griglia…). Niente doppioni.`
-    : (f.basi || []).length
-      ? `- OGNI proposta deve avere come protagonista la base scelta (${f.basi.join(", ")}). Dentro la base varia l'ingrediente principale (es. carne: pollo, maiale, vitello…; pesce: calamari, seppie, orata, trota…). Se le basi sono più d'una, distribuiscile.
-- Le ${n} proposte devono essere tutte DIVERSE tra loro, niente doppioni.`
-      : `- Le ${n} proposte devono essere tutte DIVERSE tra loro: varia ingrediente principale e cottura, niente doppioni.`
-}
-- Le verdure scelte sono quelle che abbiamo: usale nelle proposte, ma la base resta il piatto principale (salvo lo stile "Più verdura che altro").
-- Usa ingredienti di stagione e prezzi ordinari di un supermercato italiano.
+IN CASA C'È SEMPRE (dispensa base, usala liberamente): ${(b.dispensa || []).join(", ")}.
 
-IN CASA C'È SEMPRE (dispensa base): ${(b.dispensa || []).join(", ")}.
-
-${b.gusti ? `COSA ABBIAMO CUCINATO DI RECENTE, CON VOTI E NOTE DELLO CHEF (impara i nostri gusti, non riproporre le stesse cose):\n${b.gusti}` : ""}
+${b.gusti ? `I NOSTRI GUSTI (ricette fatte di recente con voti e note dello chef: servono a capire cosa ci piace, NON sono richieste di oggi e non devono cambiare l'ingrediente principale):\n${b.gusti}` : ""}
 ${b.evita?.length ? `NON riproporre queste: ${b.evita.join("; ")}.` : ""}
 
 Rispondi SOLO con JSON in questo formato:

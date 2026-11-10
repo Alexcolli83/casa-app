@@ -93,6 +93,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
     }
   };
 
+  const haTesto = !!filtri.testo.trim();
   const basiConTipi = basi.filter((b) => b.tipi && filtri.basi.includes(b.id));
   const verdureOrdinate = [...verdure].sort((a, b) => diStagione(b) - diStagione(a));
   const scelte =
@@ -114,7 +115,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
       </div>
 
       {/* 1. BASE */}
-      <Passo n={1} titolo="La base">
+      <Passo n={1} sbiadito={haTesto} titolo="La base">
         <div className="grid grid-cols-5 gap-1.5">
           {basi.map((b) => {
             const on = filtri.basi.includes(b.id);
@@ -156,7 +157,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
       </Passo>
 
       {/* 2. VERDURE */}
-      <Passo n={2} titolo="Le verdure" aiuto={<span><span className="text-emerald-400">verde</span> = di stagione</span>}>
+      <Passo n={2} sbiadito={haTesto} titolo="Le verdure" aiuto={<span><span className="text-emerald-400">verde</span> = di stagione</span>}>
         <div className="flex flex-wrap gap-1.5">
           {verdureOrdinate.map((v) => {
             const on = filtri.verdure.includes(v.nome);
@@ -175,7 +176,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
       </Passo>
 
       {/* 3. STILE */}
-      <Passo n={3} titolo="Lo stile">
+      <Passo n={3} sbiadito={haTesto} titolo="Lo stile">
         <div className="flex flex-wrap gap-1.5">
           {umori.map((u) => (
             <button
@@ -237,6 +238,11 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
           placeholder="es. devo finire mezzo cavolo e due salsicce, e ho voglia di qualcosa di caldo"
           className="campo resize-none py-2.5"
         />
+        {haTesto && (
+          <p className="text-xs text-amber-300/90 mt-1.5">
+            Cerco quello che hai scritto. Le scelte sopra valgono solo come suggerimento.
+          </p>
+        )}
         <button onClick={() => setDispensaAperta((x) => !x)} className="text-xs text-cyan-400 mt-2">
           {dispensaAperta ? "Chiudi la dispensa" : `🧂 Dispensa base: ${dispensa.length} cose sempre in casa`}
         </button>
@@ -261,24 +267,26 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
 
       {proposte.length > 0 && (
         <div id="proposte" className="space-y-3 scroll-mt-20 pt-2">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-lg font-bold">Le proposte</h2>
-            <button onClick={() => chiedi(true)} disabled={carico} className="text-sm text-cyan-400 disabled:opacity-50">
-              🔄 Altre idee
-            </button>
-          </div>
+          <h2 className="text-lg font-bold px-1">Le proposte</h2>
           {proposte.map((p, i) => (
             <SchedaProposta key={i + p.titolo} p={p} onScegli={() => onScegli(p, filtri)} />
           ))}
+          <button
+            onClick={() => chiedi(true)}
+            disabled={carico}
+            className="w-full rounded-2xl border border-cyan-400/50 text-cyan-300 py-3 disabled:opacity-50"
+          >
+            {carico ? "Ci penso… 🤔" : "🔄 Altre 5 idee"}
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-function Passo({ n, titolo, aiuto, evidenzia, children }) {
+function Passo({ n, titolo, aiuto, evidenzia, sbiadito, children }) {
   return (
-    <section className={`card p-3.5 ${evidenzia ? "border-amber-400/60" : ""}`}>
+    <section className={`card p-3.5 transition ${evidenzia ? "border-amber-400/60" : ""} ${sbiadito ? "opacity-45" : ""}`}>
       <div className="flex items-center gap-2 mb-2.5">
         <span className="w-5 h-5 rounded-full bg-cyan-400/15 text-cyan-300 text-[11px] font-bold flex items-center justify-center">
           {n}
