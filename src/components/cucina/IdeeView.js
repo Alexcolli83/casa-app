@@ -87,7 +87,8 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
           },
           dispensa,
           gusti: riassuntoGusti(ricette),
-          evita: giaViste.map((p) => p.titolo)
+          evita: giaViste.map((p) => p.titolo),
+          ripartiDa: altre ? giaViste[giaViste.length - 1]?.origine || "" : ""
         },
         (ricetta) => {
           if (lista.some((p) => p.titolo?.toLowerCase() === ricetta.titolo.toLowerCase())) return;
@@ -102,7 +103,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
         }
       );
       if (!esito.quante) throw new Error("Nessuna idea questa volta, riprova.");
-      setFine(esito.fine + (esito.nota ? "|" + esito.nota : ""));
+      setFine([esito.fine, esito.nota || "", `${esito.quante} nuove · ${esito.info || ""}`].join("|"));
     } catch (e) {
       setErrore(e.message);
     } finally {
@@ -306,7 +307,7 @@ export default function IdeeView({ ricette, dispensa, onScegli }) {
 }
 
 function MotivoFine({ fine: grezzo }) {
-  const [fine, nota] = grezzo.split("|");
+  const [fine, nota, info] = grezzo.split("|");
   const testi = {
     STOP: "Il cuoco ha finito le idee per questa richiesta. Con \"Altre idee\" ne cerca di nuove.",
     TEMPO: "Tempo scaduto (Vercel chiude dopo un minuto): queste sono quelle arrivate in tempo.",
@@ -318,6 +319,7 @@ function MotivoFine({ fine: grezzo }) {
     <div className="text-xs text-slate-500 text-center px-4 space-y-1">
       <p>{testi[fine] || "Si è fermato (" + fine + ")."}</p>
       {nota && <p className="text-amber-300/80">{nota}</p>}
+      {info && <p className="text-slate-600">{info}</p>}
     </div>
   );
 }

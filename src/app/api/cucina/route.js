@@ -32,6 +32,15 @@ const REGIONI = [
   "Molise", "Campania", "Puglia", "Basilicata", "Calabria", "Sicilia", "Sardegna"
 ];
 
+/** La scaletta delle regioni, che riparte da quella dopo "ripartiDa" (es. l'ultima del giro precedente). */
+function scalettaRegioni(ripartiDa) {
+  const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z]/g, "");
+  const r = norm(ripartiDa);
+  const i = r ? REGIONI.findIndex((x) => r.includes(norm(x)) || norm(x).includes(r)) : -1;
+  if (i < 0) return REGIONI;
+  return [...REGIONI.slice(i + 1), ...REGIONI.slice(0, i + 1)];
+}
+
 const MAX_TENTATIVO = 25000; // un singolo modello non può tenerci appesi più di 25 secondi
 const BUDGET = 55000; // tempo totale per richiesta (Vercel taglia a 60)
 
@@ -245,7 +254,7 @@ ${regolaBase}
   return `Siamo a ${oggi()}. Proponi PIÙ IDEE POSSIBILI per la cena di stasera (almeno ${n}), senza doppioni.
 
 DOVE CERCARE: fai il GIRO D'ITALIA. Procedi regione per regione, in quest'ordine:
-${REGIONI.join(", ")}, e alla fine qualcosa di internazionale.
+${scalettaRegioni(b.ripartiDa).join(", ")}, e alla fine qualcosa di internazionale.
 Per OGNI regione scrivi 2-3 ricette tipiche o ispirate a quella cucina che rispettano le nostre richieste
 (anche tradizionali poco conosciute). Salta una regione solo se proprio non ha nulla di adatto.
 Arriva fino in fondo alla scaletta, fino alla Sardegna: è normale e voluto che i piatti siano tanti. Non fermarti a metà.
@@ -380,7 +389,7 @@ async function apriFlusso(corpo, scadenza) {
         throw ultimo;
       }
       pensieroBuono[m] = i;
-      return r.body;
+      return { body: r.body, modello: m };
     }
   }
   throw ultimo || new ErroreGemini("tempo finito", 504);
@@ -416,6 +425,7 @@ async function proposteFlusso(b, scadenza) {
 
   const corpoPrimo = corpoGiro(0, []);
   const primo = await apriFlusso(corpoPrimo, scadenza);
+  const t0 = Date.now();
   const enc = new TextEncoder();
 
   return new ReadableStream({
@@ -423,7 +433,9 @@ async function proposteFlusso(b, scadenza) {
       const titoli = [];
       const visti = new Set(evitaBase.map((t) => t.toLowerCase()));
       let motivo = "STOP";
-      let body = primo;
+      let body = primo.body;
+      let modello = primo.modello;
+      let finish = "";
 
       for (let giro = 0; giro < MAX_GIRI; giro++) {
         if (giro > 0) {
@@ -433,7 +445,7 @@ async function proposteFlusso(b, scadenza) {
             break;
           }
           try {
-            body = await apriFlusso(corpoGiro(titoli.length, titoli), scadenza);
+            ({ body, modello } = await apriFlusso(corpoGiro(titoli.length, titoli), scadenza));
           } catch (e) {
             console.warn("cucina rilancio", e.status, String(e.message).slice(0, 120));
             motivo = e.status === 429 ? "QUOTA" : "STOP";
@@ -451,6 +463,7 @@ async function proposteFlusso(b, scadenza) {
           }
           return false;
         });
+        finish = nuove.finish || finish;
         if (nuove.tempo) {
           motivo = "TEMPO";
           break;
@@ -459,6 +472,8 @@ async function proposteFlusso(b, scadenza) {
       }
 
       if (titoli.length >= obiettivo) motivo = "STOP";
+      const info = `${modello.replace("gemini-", "")} · ${Math.round((Date.now() - t0) / 1000)} s · fine: ${finish || motivo}`;
+      ctrl.enqueue(enc.encode(`\n${JSON.stringify({ _info: info })}\n`));
       ctrl.enqueue(enc.encode(`\n{"_fine":"${motivo}"}\n`));
       ctrl.close();
     }
@@ -508,6 +523,7 @@ async function leggiGiro(body, scadenza, manda, contaRiga) {
   const dec = new TextDecoder();
   let resto = "";
   let quante = 0;
+  let finish = "";
   const estrai = creaEstrattore((ric) => {
     const riga = JSON.stringify(ric);
     if (contaRiga(riga)) {
@@ -519,7 +535,7 @@ async function leggiGiro(body, scadenza, manda, contaRiga) {
     for (;;) {
       if (Date.now() > scadenza) {
         lettore.cancel().catch(() => {});
-        return { quante, tempo: true };
+        return { quante, tempo: true, finish: "TEMPO" };
       }
       const { value, done } = await lettore.read();
       if (done) break;
@@ -530,7 +546,9 @@ async function leggiGiro(body, scadenza, manda, contaRiga) {
         const riga = ev.trim();
         if (!riga.startsWith("data:")) continue;
         try {
-          const t = testoGrezzo(JSON.parse(riga.slice(5)));
+          const j = JSON.parse(riga.slice(5));
+          if (j.candidates?.[0]?.finishReason) finish = j.candidates[0].finishReason;
+          const t = testoGrezzo(j);
           if (t) estrai(t);
         } catch {
           // evento non leggibile
@@ -540,7 +558,7 @@ async function leggiGiro(body, scadenza, manda, contaRiga) {
   } catch (e) {
     console.warn("cucina lettura giro", e?.message);
   }
-  return { quante, tempo: false };
+  return { quante, tempo: false, finish };
 }
 
 async function approfondisci(b, scadenza) {

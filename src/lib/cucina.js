@@ -221,6 +221,7 @@ export async function proposteAFlusso(dati, onRicetta) {
   let quante = 0;
   let fine = "";
   let nota = "";
+  let info = "";
   const visti = new Set();
 
   const leggiRiga = (riga) => {
@@ -230,6 +231,10 @@ export async function proposteAFlusso(dati, onRicetta) {
       const ric = JSON.parse(t);
       if (ric?._fine) {
         fine = ric._fine;
+        return;
+      }
+      if (ric?._info) {
+        info = ric._info;
         return;
       }
       if (ric?._nota) {
@@ -260,7 +265,7 @@ export async function proposteAFlusso(dati, onRicetta) {
     righe.forEach(leggiRiga);
   }
   leggiRiga(buffer);
-  return { quante, fine: fine || "INTERROTTO", nota };
+  return { quante, fine: fine || "INTERROTTO", nota, info };
 }
 
 /** Piccola memoria sul telefono (non condivisa): se non va, pazienza. */
