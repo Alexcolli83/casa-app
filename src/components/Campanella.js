@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { auth } from "@/firebase";
 
 // chiave pubblica delle notifiche (quella privata sta solo su Vercel)
@@ -118,7 +119,8 @@ export default function Campanella() {
         {stato === "attive" && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400" />}
       </button>
 
-      {aperto && (
+      {aperto &&
+        createPortal(
         <div className="fixed inset-0 z-[70]">
           <div onClick={() => setAperto(false)} className="absolute inset-0 bg-black/60" />
           <div className="absolute inset-x-0 bottom-0 max-w-lg mx-auto bg-[#151b26] rounded-t-3xl px-5 pt-3 safe-bottom-sheet space-y-4">
@@ -172,8 +174,9 @@ export default function Campanella() {
 
             {msg && <div className="text-sm text-slate-300">{msg}</div>}
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </>
   );
 }
