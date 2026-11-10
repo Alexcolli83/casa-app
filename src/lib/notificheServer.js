@@ -11,6 +11,7 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import * as webpush from "web-push";
+import { createPrivateKey } from "crypto";
 
 export const VAPID_PUBLIC_KEY =
   "BFLK-8pjCLOC6wNBUbj1GK1PoflG9X3vvd4HEWy8C-xD47y9pzE4AXF3g8dIx6HgFYseVr8tGg6IJM47-emrHJU";
@@ -22,18 +23,67 @@ export function configOk() {
   return manca;
 }
 
+/** Costruisce una chiave PEM pulita dal "corpo" (solo caratteri base64). */
+const pem = (tipo, corpo) =>
+  `-----BEGIN ${tipo}-----\n${(corpo.match(/.{1,64}/g) || []).join("\n")}\n-----END ${tipo}-----\n`;
+
+const valida = (k) => {
+  try {
+    createPrivateKey(k);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /**
- * Rimette a posto la chiave privata se nel copia-incolla si è rovinata:
- * "\\n" scritti come testo, a capo spariti, spazi al posto degli a capo, virgolette in più.
+ * Rimette a posto la chiave privata se nel copia-incolla si è rovinata.
+ * Prova diverse riparazioni e tiene la prima che il computer riesce davvero a leggere:
+ * "\\n" scritti come testo, a capo spariti o diventati spazi, virgolette in più,
+ * e anche le barre "\\" sparite (ogni "\\n" diventato una semplice "n").
  */
 function sistemaChiave(k) {
   let t = String(k || "").trim().replace(/^"|"$/g, "");
   t = t.replace(/\\\\n/g, "\n").replace(/\\n/g, "\n").replace(/\r/g, "");
+  if (valida(t)) return t;
   const m = t.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
   if (!m) return t;
-  const corpo = m[2].replace(/[^A-Za-z0-9+/=]/g, ""); // solo i caratteri della chiave
-  const righe = corpo.match(/.{1,64}/g) || [];
-  return `-----BEGIN ${m[1]}-----\n${righe.join("\n")}\n-----END ${m[1]}-----\n`;
+  const tipo = m[1];
+  const corpo = m[2].replace(/[^A-Za-z0-9+/=]/g, "");
+
+  // 1) solo togliere spazi/a capo sbagliati
+  const k1 = pem(tipo, corpo);
+  if (valida(k1)) return k1;
+
+  // 2) barre sparite: una "n" in testa, una in coda e una ogni 64 caratteri
+  let c = corpo;
+  if (c.startsWith("n")) c = c.slice(1);
+  if (c.endsWith("n")) c = c.slice(0, -1);
+  let pulito = "";
+  for (let i = 0; i < c.length; i++) {
+    if ((i + 1) % 65 === 0 && c[i] === "n") continue;
+    pulito += c[i];
+  }
+  const k2 = pem(tipo, pulito);
+  if (valida(k2)) return k2;
+
+  return k1;
+}
+
+/** Descrive la forma della chiave (senza mostrarla) per capire cosa non va. */
+export function descriviChiave() {
+  const testo = String(process.env.FIREBASE_SERVICE_ACCOUNT || "");
+  const pk = (testo.match(/"private_key"\s*:\s*"([^"]*)"/) || [])[1] || "";
+  return [
+    `testo ${testo.length} car.`,
+    `inizia con { ${testo.trim().startsWith("{") ? "sì" : "no"}`,
+    `private_key ${pk.length} car.`,
+    `BEGIN ${pk.includes("BEGIN") ? "sì" : "no"}`,
+    `END ${pk.includes("END") ? "sì" : "no"}`,
+    `\\n scritti ${(pk.match(/\\n/g) || []).length}`,
+    `a capo veri ${(pk.match(/\n/g) || []).length}`,
+    `project_id ${/"project_id"/.test(testo) ? "sì" : "no"}`
+  ].join(", ");
 }
 
 /** Legge la chiave di servizio, anche se incollata con qualche difetto. */

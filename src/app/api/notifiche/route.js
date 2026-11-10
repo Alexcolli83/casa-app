@@ -122,7 +122,7 @@ export async function POST(req) {
   try {
     db = adminDb(); // qui si legge la chiave di servizio
   } catch (e) {
-    return json({ errore: "Chiave FIREBASE_SERVICE_ACCOUNT non valida: " + spiega(e) }, 500);
+    return json({ errore: "Chiave FIREBASE_SERVICE_ACCOUNT non valida: " + spiega(e) + " [" + L.descriviChiave() + "]" }, 500);
   }
   let email = null;
   try {
