@@ -25,7 +25,7 @@ export default function RicettarioView({ ricette, onApri }) {
     const q = cerca.trim().toLowerCase();
     return ricette.filter((r) => {
       if (q) {
-        const testo = [r.titolo, r.descrizione, r.proposta?.origine, r.proposta?.tipologia, ...(r.umori || []), ...(r.tag || []), ...(r.note || []).map((n) => n.testo)]
+        const testo = [r.titolo, r.descrizione, r.proposta?.origine, r.proposta?.tipologia, ...(r.umori || []), ...(r.tag || []), ...(r.note || []).map((n) => n.testo), ...(r.consigli || []).map((c) => c.domanda + " " + c.risposta)]
           .join(" ")
           .toLowerCase();
         if (!testo.includes(q)) return false;

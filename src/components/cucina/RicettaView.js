@@ -28,13 +28,34 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
   const [salvaAperto, setSalvaAperto] = useState(false);
   const [settimanaAperta, setSettimanaAperta] = useState(false);
   const [messaIn, setMessaIn] = useState("");
+  // domande e risposte fatte allo chef in questa visita (se la ricetta non è ancora salvata)
+  const [consigliNuovi, setConsigliNuovi] = useState([]);
   const partito = useRef(false);
 
   const titolo = salvata?.titolo || completa?.titolo || proposta?.titolo;
 
   // note dello chef sulle volte precedenti di questa stessa ricetta
   const precedente = salvata || ricette.find((r) => r.titolo?.toLowerCase() === proposta?.titolo?.toLowerCase());
-  const noteChef = (precedente?.note || []).map((n) => n.testo).join(" / ");
+  const consigliSalvati = salvata?.consigli || precedente?.consigli || [];
+  const noteChef = [
+    (precedente?.note || []).map((n) => n.testo).join(" / "),
+    consigliSalvati.length
+      ? "Consigli già dati le volte scorse: " + consigliSalvati.map((c) => `D: ${c.domanda} R: ${c.risposta}`).join(" | ")
+      : ""
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 4000);
+
+  const nuovoConsiglio = async (c) => {
+    const voce = { ...c, user: auth.currentUser?.email || "", data: new Date() };
+    if (salvata) {
+      // ricetta già nel ricettario: lo aggiungo subito
+      await updateDoc(doc(db, "ricette", salvata.id), { consigli: arrayUnion(voce) }).catch(() => {});
+    } else {
+      setConsigliNuovi((x) => [...x, voce]);
+    }
+  };
 
   const approfondisci = async (piu = false) => {
     setCarico(true);
@@ -202,7 +223,9 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
           </>
         )}
 
-        <Chef ricetta={completa || proposta} noteChef={noteChef} />
+        {salvata?.consigli?.length > 0 && <ConsigliSalvati consigli={salvata.consigli} />}
+
+        <Chef ricetta={completa || proposta} noteChef={noteChef} onConsiglio={nuovoConsiglio} salvata={!!salvata} />
 
         {!salvata && (
           <button onClick={() => setSalvaAperto(true)} className="btn-primario w-full text-lg">
@@ -241,6 +264,7 @@ export default function RicettaView({ proposta, salvata, filtri, ricette, onSalv
           completa={completa}
           fonti={fonti}
           filtri={filtri}
+          consigli={consigliNuovi}
           onChiudi={() => setSalvaAperto(false)}
           onSalvata={(nuova) => {
             setSalvaAperto(false);
@@ -325,6 +349,34 @@ function SettimanaSheet({ titolo, onChiudi, onMessa }) {
   );
 }
 
+const fmtDataBreve = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", year: "2-digit" });
+
+/** Le domande fatte allo chef nelle volte precedenti, con le risposte. */
+function ConsigliSalvati({ consigli }) {
+  const [aperti, setAperti] = useState(false);
+  const lista = aperti ? consigli : consigli.slice(-3);
+  return (
+    <section className="card text-sm space-y-2">
+      <div className="titolo-card mb-0">💡 Consigli dello chef ({consigli.length})</div>
+      {lista.map((c, i) => (
+        <div key={i} className="rounded-2xl bg-[#0b0f17] border border-slate-800 px-3 py-2 space-y-1">
+          <div className="text-cyan-200">❓ {c.domanda}</div>
+          <div className="text-slate-300 whitespace-pre-wrap">{c.risposta}</div>
+          <div className="text-[11px] text-slate-600">
+            {nomeUtente(c.user)}
+            {dataDoc(c.data) && " · " + fmtDataBreve.format(dataDoc(c.data))}
+          </div>
+        </div>
+      ))}
+      {consigli.length > 3 && (
+        <button onClick={() => setAperti((x) => !x)} className="text-xs text-cyan-400">
+          {aperti ? "Mostra meno" : `Mostra tutti (${consigli.length})`}
+        </button>
+      )}
+    </section>
+  );
+}
+
 function Elenco({ titolo, voci }) {
   if (!voci?.length) return null;
   return (
@@ -340,7 +392,7 @@ function Elenco({ titolo, voci }) {
 }
 
 /** Lo chef in chat, accanto ai fornelli. */
-function Chef({ ricetta, noteChef }) {
+function Chef({ ricetta, noteChef, onConsiglio, salvata }) {
   const [messaggi, setMessaggi] = useState([]);
   const [testo, setTesto] = useState("");
   const [carico, setCarico] = useState(false);
@@ -357,6 +409,7 @@ function Chef({ ricetta, noteChef }) {
     try {
       const j = await chiediCucina("chiedi", { ricetta, messaggi: nuovi, noteChef });
       setMessaggi([...nuovi, { ruolo: "chef", testo: j.risposta }]);
+      onConsiglio?.({ domanda: t, risposta: j.risposta });
     } catch (err) {
       setMessaggi([...nuovi, { ruolo: "chef", testo: "⚠️ " + err.message }]);
     } finally {
@@ -370,6 +423,9 @@ function Chef({ ricetta, noteChef }) {
   return (
     <section className="card space-y-3">
       <div className="titolo-card mb-0">👨‍🍳 Chiedi allo chef</div>
+      <p className="text-[11px] text-slate-500 -mt-2">
+        {salvata ? "Domande e risposte si salvano da sole nel ricettario." : "Domande e risposte finiranno nel ricettario quando salvi la ricetta."}
+      </p>
       {messaggi.length === 0 && (
         <div className="flex flex-wrap gap-2">
           {spunti.map((s) => (
@@ -408,7 +464,7 @@ function Chef({ ricetta, noteChef }) {
 }
 
 /** Pannello per salvare: nota dello chef, voto, tempo reale, quanto ha sporcato. */
-function SalvaSheet({ proposta, completa, fonti, filtri, onChiudi, onSalvata }) {
+function SalvaSheet({ proposta, completa, fonti, filtri, consigli = [], onChiudi, onSalvata }) {
   const r = completa || {};
   const [nota, setNota] = useState("");
   const [voto, setVoto] = useState(0);
@@ -442,7 +498,8 @@ function SalvaSheet({ proposta, completa, fonti, filtri, onChiudi, onSalvata }) 
       }),
       fattaIl: ora,
       ultimaVolta: ora,
-      note: nota.trim() ? [{ testo: nota.trim(), user, data: ora }] : []
+      note: nota.trim() ? [{ testo: nota.trim(), user, data: ora }] : [],
+      consigli: consigli.map((c) => ({ domanda: c.domanda, risposta: c.risposta, user: c.user || user, data: c.data || ora }))
     };
     try {
       const ref = await addDoc(collection(db, "ricette"), dati);
