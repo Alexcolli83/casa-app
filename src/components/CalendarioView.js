@@ -24,8 +24,8 @@ export const tipiTurno = [
 const turnoInfo = (id) => tipiTurno.find((t) => t.id === id) || tipiTurno[4];
 
 const COLORE_BOBBY = "#22d3ee";
-const COLORE_ALICIA = "#f472b6";
-const COLORE_COPPIA = "#a78bfa";
+const COLORE_ALICIA = "#b3264a"; // bordeaux
+const COLORE_COPPIA = "#ef4444"; // rosso
 
 // Impegni (non turni): colore, sigla e nome mostrato
 const impegnoInfo = {
