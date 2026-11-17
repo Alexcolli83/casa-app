@@ -103,7 +103,7 @@ export default function Campanella() {
     setMsg("");
     try {
       const j = await chiamaNotifiche(dati);
-      if (j?.niente) setMsg("Niente da notificare (nessuna cena/impegno segnato).");
+      if (j?.niente) setMsg("Niente da notificare (nessuna cena, impegno o cosa da fare in scadenza).");
       else if (j?.partite) setMsg(okMsg);
       else if (j?.errori?.length) setMsg("Google ha rifiutato l'invio: " + j.errori.join(" | "));
       else setMsg(`Nessun telefono iscritto (${j?.iscritti ?? 0} trovati): spegni e riattiva le notifiche.`);
@@ -131,6 +131,7 @@ export default function Campanella() {
             <ul className="text-sm text-slate-300 space-y-1">
               <li>🍝 Alle 14: cosa si mangia stasera (se segnato)</li>
               <li>📅 Alle 19: impegni e turni di domani</li>
+              <li>🔁 Alle 9: le cose &quot;Da fare&quot; arrivate a scadenza</li>
               <li>💸 Subito: quando l&apos;altro aggiunge una spesa</li>
             </ul>
             <p className="text-xs text-slate-500">Gli orari possono slittare fino a un&apos;ora (piano gratuito).</p>
@@ -157,7 +158,7 @@ export default function Campanella() {
             {stato === "attive" && (
               <div className="space-y-2">
                 <div className="text-sm text-emerald-300">✓ Attive su questo telefono</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button disabled={lavoro} onClick={() => prova({ azione: "prova" }, "Inviata: controlla le notifiche!")} className="rounded-xl border border-slate-700 py-2 text-xs">
                     Prova
                   </button>
@@ -166,6 +167,9 @@ export default function Campanella() {
                   </button>
                   <button disabled={lavoro} onClick={() => prova({ azione: "provaPromemoria", tipo: "impegni" }, "Promemoria impegni inviato.")} className="rounded-xl border border-slate-700 py-2 text-xs">
                     Prova domani
+                  </button>
+                  <button disabled={lavoro} onClick={() => prova({ azione: "provaPromemoria", tipo: "scadenze" }, "Promemoria da fare inviato.")} className="rounded-xl border border-slate-700 py-2 text-xs">
+                    Prova da fare
                   </button>
                 </div>
                 <button onClick={spegni} disabled={lavoro} className="w-full text-xs text-slate-500 py-1">

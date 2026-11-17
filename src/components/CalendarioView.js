@@ -18,15 +18,25 @@ export const tipiTurno = [
   { id: "pomeriggio", label: "Pomeriggio", sigla: "P", colore: "#fb923c" },
   { id: "notte", label: "Notte", sigla: "N", colore: "#818cf8" },
   { id: "riposo", label: "Riposo", sigla: "R", colore: "#34d399" },
-  { id: "altro", label: "Altro", sigla: "•", colore: "#94a3b8" }
+  // "Altro" non si sceglie più (ora c'è "Impegno Alicia"), resta solo per mostrare le voci vecchie
+  { id: "altro", label: "Altro", sigla: "•", colore: "#94a3b8", nascosto: true }
 ];
 const turnoInfo = (id) => tipiTurno.find((t) => t.id === id) || tipiTurno[4];
 
 const COLORE_BOBBY = "#22d3ee";
+const COLORE_ALICIA = "#f472b6";
+const COLORE_COPPIA = "#a78bfa";
+
+// Impegni (non turni): colore, sigla e nome mostrato
+const impegnoInfo = {
+  Bobby: { colore: COLORE_BOBBY, sigla: "B", nome: "Bobby" },
+  Alicia: { colore: COLORE_ALICIA, sigla: "A", nome: "Alicia" },
+  Coppia: { colore: COLORE_COPPIA, sigla: "❤", nome: "Insieme" }
+};
 
 /**
  * Collezione Firestore "calendario", un documento per voce:
- *  { giorno: "2026-10-31", chi: "Alicia" | "Bobby",
+ *  { giorno: "2026-10-31", chi: "Alicia" | "Bobby" | "Coppia",
  *    turno?: "mattina"..., testo?: "...", ora?: "18:30", user, creato }
  */
 export default function CalendarioView() {
@@ -34,7 +44,7 @@ export default function CalendarioView() {
   const [voci, setVoci] = useState([]);
   const [meseKey, setMeseKey] = useState(() => chiaveMese(new Date()));
   const [giorno, setGiorno] = useState(oggi);
-  const [form, setForm] = useState(null); // null | "Alicia" | "Bobby"
+  const [form, setForm] = useState(null); // null | "TurnoAlicia" | "Alicia" | "Bobby" | "Coppia"
 
   useEffect(
     () =>
@@ -97,6 +107,8 @@ export default function CalendarioView() {
             const lista = perGiorno[k] || [];
             const turno = lista.find((v) => v.chi === "Alicia" && v.turno);
             const nBobby = lista.filter((v) => v.chi === "Bobby").length;
+            const nAlicia = lista.filter((v) => v.chi === "Alicia" && !v.turno).length;
+            const nCoppia = lista.filter((v) => v.chi === "Coppia").length;
             const sel = k === giorno;
             return (
               <button
@@ -122,6 +134,12 @@ export default function CalendarioView() {
                   {nBobby > 0 && (
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: COLORE_BOBBY }} />
                   )}
+                  {nAlicia > 0 && (
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: COLORE_ALICIA }} />
+                  )}
+                  {nCoppia > 0 && (
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: COLORE_COPPIA }} />
+                  )}
                 </span>
               </button>
             );
@@ -135,10 +153,12 @@ export default function CalendarioView() {
               {t.label}
             </span>
           ))}
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: COLORE_BOBBY }} />
-            Impegno Bobby
-          </span>
+          {Object.entries(impegnoInfo).map(([k, x]) => (
+            <span key={k} className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: x.colore }} />
+              {k === "Coppia" ? "Insieme" : "Impegno " + x.nome}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -159,11 +179,17 @@ export default function CalendarioView() {
           <NuovaVoce chi={form} giorno={giorno} onFatto={() => setForm(null)} />
         ) : (
           <div className="grid grid-cols-2 gap-2 mt-3">
-            <button onClick={() => setForm("Alicia")} className="rounded-2xl border border-slate-700 py-3 text-sm">
+            <button onClick={() => setForm("TurnoAlicia")} className="rounded-2xl border border-slate-700 py-3 text-sm">
               <span className="text-amber-300">●</span> Turno Alicia
+            </button>
+            <button onClick={() => setForm("Alicia")} className="rounded-2xl border border-slate-700 py-3 text-sm">
+              <span style={{ color: COLORE_ALICIA }}>●</span> Impegno Alicia
             </button>
             <button onClick={() => setForm("Bobby")} className="rounded-2xl border border-slate-700 py-3 text-sm">
               <span className="text-cyan-300">●</span> Impegno Bobby
+            </button>
+            <button onClick={() => setForm("Coppia")} className="rounded-2xl border border-slate-700 py-3 text-sm">
+              <span style={{ color: COLORE_COPPIA }}>❤</span> Impegno di coppia
             </button>
           </div>
         )}
@@ -175,6 +201,7 @@ export default function CalendarioView() {
 function Voce({ v }) {
   const [conferma, setConferma] = useState(false);
   const t = v.turno ? turnoInfo(v.turno) : null;
+  const imp = impegnoInfo[v.chi] || impegnoInfo.Bobby;
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <span
@@ -182,17 +209,17 @@ function Voce({ v }) {
         style={
           t
             ? { background: t.colore, color: "#000" }
-            : { background: COLORE_BOBBY + "33", color: COLORE_BOBBY }
+            : { background: imp.colore + "33", color: imp.colore }
         }
       >
-        {t ? t.sigla : "B"}
+        {t ? t.sigla : imp.sigla}
       </span>
       <span className="flex-1 min-w-0">
         <span className="block font-medium truncate">
           {t ? `Turno ${t.label.toLowerCase()}` : v.testo}
         </span>
         <span className="block text-xs text-slate-400 truncate">
-          {v.chi}
+          {v.chi === "Coppia" ? "Insieme" : v.chi}
           {v.ora ? " · " + v.ora : ""}
           {t && v.testo ? " · " + v.testo : ""}
         </span>
@@ -215,8 +242,10 @@ function Voce({ v }) {
   );
 }
 
-function NuovaVoce({ chi, giorno, onFatto }) {
-  const alicia = chi === "Alicia";
+function NuovaVoce({ chi: scelta, giorno, onFatto }) {
+  // "TurnoAlicia" = turno di Alicia; "Alicia" / "Bobby" / "Coppia" = impegno
+  const alicia = scelta === "TurnoAlicia";
+  const chi = alicia ? "Alicia" : scelta;
   const [turno, setTurno] = useState(alicia ? "mattina" : null);
   const [testo, setTesto] = useState("");
   const [ora, setOra] = useState("");
@@ -241,13 +270,15 @@ function NuovaVoce({ chi, giorno, onFatto }) {
   return (
     <form onSubmit={salva} className="card mt-3 space-y-3">
       <div className="flex justify-between items-center">
-        <h4 className="font-semibold">{alicia ? "Turno di Alicia" : "Impegno di Bobby"}</h4>
+        <h4 className="font-semibold">
+          {alicia ? "Turno di Alicia" : chi === "Coppia" ? "Impegno di coppia" : `Impegno di ${chi}`}
+        </h4>
         <button type="button" onClick={onFatto} className="text-sm text-slate-400">Annulla</button>
       </div>
 
       {alicia && (
-        <div className="grid grid-cols-5 gap-1.5">
-          {tipiTurno.map((t) => (
+        <div className="grid grid-cols-4 gap-1.5">
+          {tipiTurno.filter((t) => !t.nascosto).map((t) => (
             <button
               key={t.id}
               type="button"
@@ -267,7 +298,9 @@ function NuovaVoce({ chi, giorno, onFatto }) {
       <input
         value={testo}
         onChange={(e) => setTesto(e.target.value)}
-        placeholder={alicia ? "Nota (es. 7–14, reparto…)" : "Cosa? (es. dentista, calcetto…)"}
+        placeholder={
+          alicia ? "Nota (es. 7–14, reparto…)" : chi === "Coppia" ? "Cosa? (es. cena dai suoceri, matrimonio…)" : "Cosa? (es. dentista, palestra…)"
+        }
         className="campo"
         autoFocus={!alicia}
       />

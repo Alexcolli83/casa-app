@@ -14,12 +14,14 @@ import SpesaSheet from "@/components/SpesaSheet";
 import CalendarioView from "@/components/CalendarioView";
 import CucinaView from "@/components/cucina/CucinaView";
 import Campanella from "@/components/Campanella";
+import ScadenzeView from "@/components/ScadenzeView";
 
 const schede = [
   { id: "spese", label: "Spese", icona: "💶" },
   { id: "calendario", label: "Calendario", icona: "📅" },
   { id: "cene", label: "Cene", icona: "🍝" },
-  { id: "lista", label: "Lista", icona: "🛒" }
+  { id: "lista", label: "Lista", icona: "🛒" },
+  { id: "dafare", label: "Da fare", icona: "🔁" }
 ];
 
 // Le tre viste delle spese, scelte dal selettore in alto
@@ -118,6 +120,8 @@ export default function Home() {
           <CucinaView />
         ) : scheda === "lista" ? (
           <ListaView lista={lista} />
+        ) : scheda === "dafare" ? (
+          <ScadenzeView />
         ) : !pronto ? (
           <div className="text-center text-slate-400 py-20">Carico le spese…</div>
         ) : vista === "mese" ? (
@@ -153,7 +157,7 @@ export default function Home() {
       )}
 
       <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#0f141d]/95 backdrop-blur border-t border-slate-800 safe-bottom">
-        <div className="max-w-lg mx-auto grid grid-cols-4">
+        <div className="max-w-lg mx-auto grid grid-cols-5">
           {schede.map((s) => (
             <button
               key={s.id}

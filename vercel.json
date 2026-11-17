@@ -1,8 +1,28 @@
 {
   "crons": [
-    { "path": "/api/notifiche?tipo=cena&ora=14", "schedule": "0 12 * * *" },
-    { "path": "/api/notifiche?tipo=cena&ora=14", "schedule": "0 13 * * *" },
-    { "path": "/api/notifiche?tipo=impegni&ora=19", "schedule": "0 17 * * *" },
-    { "path": "/api/notifiche?tipo=impegni&ora=19", "schedule": "0 18 * * *" }
+    {
+      "path": "/api/notifiche?tipo=cena&ora=14",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/notifiche?tipo=cena&ora=14",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/notifiche?tipo=impegni&ora=19",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/notifiche?tipo=impegni&ora=19",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/notifiche?tipo=scadenze&ora=9",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/notifiche?tipo=scadenze&ora=9",
+      "schedule": "0 8 * * *"
+    }
   ]
 }

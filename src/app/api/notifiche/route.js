@@ -2,6 +2,7 @@
 //
 // GET  /api/notifiche?tipo=cena&ora=14      (lo chiama Vercel ogni giorno: promemoria cena di stasera)
 // GET  /api/notifiche?tipo=impegni&ora=19   (promemoria impegni e turni di domani)
+// GET  /api/notifiche?tipo=scadenze&ora=9   (cose da fare ricorrenti arrivate a scadenza)
 //   Vercel gratuito chiama "entro l'ora" e solo in ora UTC: per questo ogni promemoria ha due orari
 //   in vercel.json (estate/inverno) e qui parte solo se in Italia è l'ora giusta, una volta al giorno.
 //
@@ -71,6 +72,7 @@ async function promemoria(tipo, oraVoluta, forza, soloA) {
   if (!forza && (await segno.get()).exists) return { saltato: "già mandata oggi" };
 
   let messaggio = null;
+  let daSegnare = [];
 
   if (tipo === "cena") {
     const c = await db.collection("cene").doc(giorno).get();
@@ -85,9 +87,20 @@ async function promemoria(tipo, oraVoluta, forza, soloA) {
       .map((v) => {
         const cosa = v.turno ? turni[v.turno] || "turno" : "";
         const pezzi = [cosa, v.testo].filter(Boolean).join(": ");
-        return `${v.chi}: ${pezzi || "impegno"}${v.ora ? ` alle ${v.ora}` : ""}`;
+        const chi = v.chi === "Coppia" ? "Insieme" : v.chi;
+        return `${chi}: ${pezzi || "impegno"}${v.ora ? ` alle ${v.ora}` : ""}`;
       });
     if (voci.length) messaggio = { titolo: "📅 Domani", testo: voci.join("\n"), url: "/" };
+  } else if (tipo === "scadenze") {
+    // cose da fare ricorrenti arrivate a scadenza (e non ancora avvisate per questa scadenza)
+    const snap = await db.collection("scadenze").where("prossima", "<=", giorno).get();
+    daSegnare = snap.docs.filter((d) => forza || d.data().avvisata !== d.data().prossima);
+    const voci = daSegnare.map((d) => {
+      const v = d.data();
+      const ritardo = Math.round((Date.parse(giorno) - Date.parse(v.prossima)) / 86400000);
+      return `• ${v.titolo}${ritardo > 0 ? ` (scaduta da ${ritardo} giorni)` : ""}`;
+    });
+    if (voci.length) messaggio = { titolo: voci.length === 1 ? "🔁 Da fare" : `🔁 Da fare (${voci.length})`, testo: voci.join("\n"), url: "/" };
   } else {
     return { errore: "tipo sconosciuto" };
   }
@@ -98,7 +111,11 @@ async function promemoria(tipo, oraVoluta, forza, soloA) {
   }
 
   const esito = await mandaA(soloA || allowedUsers, messaggio);
-  if (!forza) await segno.set({ quando: new Date(), partite: esito.partite });
+  if (!forza) {
+    await segno.set({ quando: new Date(), partite: esito.partite });
+    // segno le scadenze avvisate, così domani non ripartono
+    await Promise.all(daSegnare.map((d) => d.ref.update({ avvisata: d.data().prossima })));
+  }
   return { ...esito, messaggio };
 }
 
